@@ -1,0 +1,24 @@
+{
+  "player": {
+    "hp": 80,
+    "maxHp": 80,
+    "energy": 3,
+    "maxEnergy": 3,
+    "drawPerTurn": 5
+  },
+  "enemies": [
+    { "typeId": "curse_weaver", "hp": 350, "maxHp": 350 }
+  ],
+  "deck": [
+    "offering",
+    "rupture",
+    "limit_break",
+    "body_slam",
+    "demon_form",
+    "shockwave",
+    "bash",
+    "defend",
+    "inflame",
+    "strike"
+  ]
+}

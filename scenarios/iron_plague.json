@@ -1,0 +1,27 @@
+{
+
+  "player": {
+    "hp": 75,
+    "maxHp": 75,
+    "energy": 3,
+    "maxEnergy": 3,
+    "drawPerTurn": 5
+  },
+  "enemies": [
+    { "typeId": "plague_mage", "hp": 130, "maxHp": 130 },
+    { "typeId": "iron_golem",  "hp": 200, "maxHp": 200 }
+  ],
+  "deck": [
+    "bash",
+    "cleave",
+    "rupture",
+    "defend",
+    "offering",
+    "shockwave",
+    "limit_break",
+    "body_slam",
+    "entrench",
+    "reaper",
+    "defend"
+  ]
+}

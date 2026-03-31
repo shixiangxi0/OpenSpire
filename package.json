@@ -1,0 +1,35 @@
+{
+  "name": "openspire",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "main": "evt/index.js",
+  "exports": {
+    ".": "./evt/index.js"
+  },
+  "files": [
+    "evt/",
+    "ui/",
+    "scenarios/",
+    "README.md",
+    "README_zh.md"
+  ],
+  "scripts": {
+    "start": "tsx evt/bin/openspire.js",
+    "json": "tsx evt/bin/openspire.js json",
+    "test": "vitest run"
+  },
+  "bin": {
+    "openspire": "./evt/bin/openspire.js"
+  },
+  "dependencies": {
+    "archy": "^1.0.0",
+    "ink": "^6.8.0",
+    "react": "^19.2.4",
+    "wasmoon": "^1.16.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "vitest": "^4.0.18"
+  }
+}

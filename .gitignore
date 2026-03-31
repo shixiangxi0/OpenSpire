@@ -1,0 +1,9 @@
+node_modules/
+.tmp-*
+*.tmp
+*.test-*
+.claude/*
+.vscode/*
+openspire-save.json
+evt/test/
+

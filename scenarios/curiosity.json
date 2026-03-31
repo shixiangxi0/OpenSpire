@@ -1,0 +1,8 @@
+{
+  "player": { "hp": 75, "maxHp": 75, "energy": 3, "maxEnergy": 3, "drawPerTurn": 5 },
+  "enemies": [{ "typeId": "jaw_worm", "hp": 42, "maxHp": 42 }],
+  "deck": [
+    "curiosity", "curiosity", "curiosity", "curiosity", "curiosity",
+    "curiosity", "curiosity", "curiosity", "curiosity", "curiosity"
+  ]
+}
