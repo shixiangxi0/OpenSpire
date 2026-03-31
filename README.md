@@ -28,7 +28,7 @@
 
 ## What Is This?
 
-OpenSpire is a **generic turn-based card battle engine** with a complete Slay the Spire implementation included as a demo.
+OpenSpire is a **generic turn-based card event orchestration engine** with a complete Slay the Spire implementation included as a demo.
 
 Its core philosophy: **Game rules and data are defined entirely through Lua scripts**. Build new gameplay without touching engine code—hot-pluggable and extensible. All actions flow through an event pipeline, naturally supporting CLI control and AI programmatic takeover.
 
