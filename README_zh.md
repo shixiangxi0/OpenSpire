@@ -50,8 +50,11 @@ OpenSpire 是一个**通用回合制卡牌事件编排引擎**，内置完整的
 
 ```sh
 pnpm install
-pnpm start              # 交互式选择场景
-pnpm start iron_plague  # 直接启动指定场景
+pnpm sts                         # STS：先选语言，再选场景
+pnpm sts -- iron_plague          # STS：直接启动指定场景
+pnpm sts -- --lang en            # STS：跳过语言选择，直接英文进入
+pnpm balatro                     # Balatro：先选语言，再开始游戏
+pnpm balatro -- --lang zh        # Balatro：跳过语言选择，直接中文进入
 ```
 
 ### 终端展示
@@ -81,10 +84,9 @@ scenarios/     # 战斗场景 JSON 配置
 export const myCard = {
   id: 'my_card',
   cost: 1,
-  triggers: [{
-    event: 'card:effect',
-    script: `State.emit('entity:attack', { target = Event.target, amount = 10 })`
-  }]
+  hooks: {
+    'event:card:effect': `State.emit('entity:attack', { target = Event.target, amount = 10 })`
+  }
 };
 ```
 

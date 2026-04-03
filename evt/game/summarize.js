@@ -59,12 +59,6 @@ const LOG_LINES = {
   'player:turn:start': (_, ctx) => ctx.log.playerTurnStart,
   'player:turn:end':   (_, ctx) => ctx.log.playerTurnEnd,
 
-  'enemy:action': (p, ctx) => {
-    const name = ctx.resolveName(p.target);
-    const desc = ctx.getEnemyActionDesc(p.target, p.action);
-    return ctx.log.enemyAction(name, desc);
-  },
-
   // 敌人回合由 turnSequenceCore 直接 emit actor:turn:start { target=ep }
   'actor:turn:start': (p, ctx) => {
     if (!p.target || p.target === 'player') return null;
@@ -82,6 +76,13 @@ const LOG_LINES = {
 
   'entity:die':  (p, ctx) => ctx.log.die(ctx.resolveName(p.target)),
   'entity:heal': (p, ctx) => ctx.log.heal(ctx.resolveName(p.target), p.amount ?? 0),
+  'enemy:action': (p, ctx) => {
+    if (!p.target || !p.action) return null;
+    return ctx.log.enemyAction(
+      ctx.resolveName(p.target),
+      ctx.getEnemyActionDesc(p.target, p.action),
+    );
+  },
 
   'battle:end': (p, ctx) => p.victory ? ctx.log.battleVictory : ctx.log.battleDefeat,
   'turn:end':     () => null,

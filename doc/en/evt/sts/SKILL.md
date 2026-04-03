@@ -73,9 +73,9 @@ Usually includes:
 - `cost`
 - `targetType`
 - `display`
-- `triggers`
+- `hooks`
 
-The main card effect usually hangs off `card:effect`.
+The main card effect usually hangs off `event:card:effect`.
 
 ### 2. status
 
@@ -83,9 +83,9 @@ Usually includes:
 
 - `id`
 - `display`
-- `triggers`
+- `hooks`
 
-Statuses usually rely on `Ctx.self` and guard explicitly inside their triggers.
+Statuses use `Ctx.self` as their instance identity. Identity-based filtering is declared via `match` in the hook definition (e.g. `match: { target: 'self' }`) rather than written as a guard at the top of the script.
 
 ### 3. enemy
 
@@ -94,9 +94,9 @@ Usually includes:
 - `id`
 - `display`
 - `actions`
-- `triggers`
+- `hooks`
 
-`actions` mostly describes intent display; real behavior still lives in triggers.
+`actions` mostly describes intent display; real behavior still lives in `hooks`.
 
 ### 4. Runtime context
 
@@ -172,10 +172,11 @@ The current STS ruleset generally prefers content that emits:
 
 instead of punching through the skeleton and mutating low-level state directly.
 
-### 6. `actions{}` and triggers are separate layers
+### 6. `actions{}` and `hooks` are separate layers
 
 Enemy `actions{}` mostly describe intent display.
-Real action logic still lives in `enemy:action` triggers.
+Real action logic lives in `event:enemy:action` and `event:enemy:update` hooks.
+Loss-threshold reactions and similar behavior usually hang directly on `event:entity:loss`.
 
 Do not merge those mental models.
 
@@ -214,7 +215,7 @@ If those answers are still unclear, read more code before writing.
 If you are adding a card, status, or enemy, study at least:
 
 - where its lifecycle is triggered
-- which events its triggers hang from
+- which events its hooks hang from
 - how it uses `Ctx` to point at instance identity
 - how much it depends on an existing `core.js` chain
 - how similar content implements its response logic
@@ -230,7 +231,8 @@ You do not need to memorize everything, but it helps to know:
 - `target/source` are entity ids
 - the player also lives in `entities.player`
 - enemy slots are `enemies.<slot> -> enemyId`
-- `card:effect`, `enemy:action`, `enemy:ai`, and `actor:turn:start/end` are common content hooks
+- `event:card:effect`, `event:actor:turn:start/end` are common event hooks for cards and statuses
+- enemies commonly use `event:enemy:action` and `event:enemy:update`; loss reactions often use `event:entity:loss`
 - `entity:attack -> entity:damage -> entity:loss -> entity:die` is the main skeleton chain
 
 ---

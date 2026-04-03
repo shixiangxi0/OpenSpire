@@ -8,7 +8,7 @@
  *   - 常用状态读取工具：pl / enemy / st / ep
  *
  * bundle 结构（onBundle 收到的）：
- *   { rootEvent, patches: [{path, before, after}], timeline: [{action, event, seq, payload}] }
+ *   { rootEvent, patches: [{path, before, after}], timeline: [{kind, action, seq, payload, ...}] }
  *
  * timeline 说明：
  *   - timeline 数组是后序（子事件先 push），按 seq 排序才是逻辑执行顺序
@@ -24,14 +24,14 @@ export const DUMMY_ENEMY = {
   id: 'dummy',
   display: { name: 'Dummy' },
   actions: { wait: { type: 'buff', desc: 'Does nothing.' } },
-  triggers: [
-    { event: 'enemy:ai', order: 0, script: `
-if Event.target ~= Ctx.self then return end
-if Event.phase == 'init' then
-  State.set('entities', Ctx.self, 'intent', 'wait')
-end
+  hooks: {
+    'event:enemy:action': { match: { target: 'self' }, script: `
+return
 ` },
-  ],
+    'event:enemy:update': { match: { target: 'self' }, script: `
+State.set('entities', Ctx.self, 'intent', 'wait')
+` },
+  },
 };
 
 // ── 引擎构造 ─────────────────────────────────────────────────────────────────

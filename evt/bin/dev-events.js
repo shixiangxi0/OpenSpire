@@ -11,6 +11,7 @@
 import { ALL_STATUS_MODULES } from '../sts/statuses/core.js';
 import { ALL_CORE_RULES }     from '../sts/core.js';
 import { EVENTS }             from '../sts/events.js';
+import { getEventHooks }      from '../core/hooks.js';
 import archy                  from 'archy';
 
 // ── emit 提取 ──────────────────────────────────────────────────────────────
@@ -42,8 +43,8 @@ const map = new Map();
 for (const event of Object.keys(EVENTS)) map.set(event, []);
 
 function addTriggers(mod) {
-  for (const t of mod.triggers ?? []) {
-    const bucket = map.get(t.event);
+  for (const t of getEventHooks(mod)) {
+    const bucket = map.get(t.name);
     if (!bucket) continue;
     bucket.push({ registeredBy: mod.id, order: t.order ?? 0, emits: extractEmits(t.script) });
   }

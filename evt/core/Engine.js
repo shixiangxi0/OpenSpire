@@ -29,10 +29,8 @@ import { createScheduler } from './Scheduler.js'
  *   When true, logs a one-line summary of each bundle to the console.
  *
  * @param {EnrichFn} [opts.enrich]
- *   Optional payload transformer invoked after all handlers finish.
- *   Signature: (event, payload, getState) => enrichedPayload
- *   Use it to attach UI snapshots to timeline entries (e.g. current HP values).
- *   If omitted, timeline entries carry a shallow copy of the raw payload.
+ *   Optional payload transformer invoked after each event pipeline.
+ *   Signature: (name, payload, getState) => enrichedPayload
  *
  * @returns {Promise<Engine>}
  */
@@ -90,7 +88,7 @@ export async function createEngine({ onBundle = () => {}, debug = false, enrich 
   // ─── Public API ───────────────────────────────────────────────────────────
 
   /**
-   * Build the Lua-visible def catalog by stripping non-data fields (triggers, display).
+   * Build the Lua-visible def catalog by stripping non-data fields (hooks, display).
    * Injected as the Lua global `Defs` after each use() call that includes defs.
    * Scripts access it as: Defs.card.anger, Defs.enemy.jaw_worm, etc.
    */
@@ -99,7 +97,7 @@ export async function createEngine({ onBundle = () => {}, debug = false, enrich 
     for (const [kind, entries] of Object.entries(defs)) {
       catalog[kind] = {}
       for (const [id, def] of Object.entries(entries)) {
-        const { triggers: _t, display: _d, ...base } = def
+        const { hooks: _h, display: _d, ...base } = def
         catalog[kind][id] = base
       }
     }
@@ -175,7 +173,7 @@ export async function createEngine({ onBundle = () => {}, debug = false, enrich 
       if (!desc?.kind || !desc?.id) {
         throw new Error(`[Engine.load] invalid binding descriptor for "${key}" — expected { kind, id, ctx }`)
       }
-      state.bind({ key, kind: desc.kind, id: desc.id, ctx: desc.ctx ?? {} })
+      state.bind({ key, kind: desc.kind, id: desc.id, ctx: desc.ctx ?? {}, slot: desc.slot ?? null })
     }
     // Discard patches produced during bind replay — they are setup noise
     registry.flushPatches()
@@ -209,11 +207,10 @@ export async function createEngine({ onBundle = () => {}, debug = false, enrich 
  *
  * @property {Record<string, Record<string, ModuleDef>>} [defs]
  *   Definition data keyed by kind and id.
- *   e.g. { effect: { shield: { id:'shield', triggers:[...] } } }
+ *   e.g. { effect: { shield: { id:'shield', hooks:{...} } } }
  *   Made available to State.bind({ key, kind: 'effect', id: 'shield', ctx }).
  *
- * @typedef {{ id: string, triggers: Trigger[] }} ModuleDef
- * @typedef {{ event: string, order?: number, script: string }} Trigger
+ * @typedef {{ id: string, hooks: Record<string, string | { script: string, order?: number, match?: Record<string, string> }> }} ModuleDef
  *
  * @typedef {object} Bundle
  * @property {string}          rootEvent
@@ -226,7 +223,7 @@ export async function createEngine({ onBundle = () => {}, debug = false, enrich 
  * @property {number} seq
  * @property {object} payload
  *
- * @typedef {(event: string, payload: object, getState: () => object) => object} EnrichFn
+ * @typedef {(name: string, payload: object, getState: () => object) => object} EnrichFn
  *
  * @typedef {object} Engine
  * @property {(module: Module) => void}    use

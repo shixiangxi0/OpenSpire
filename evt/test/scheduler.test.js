@@ -31,7 +31,7 @@ function makeHarness({ onBundle = () => {}, enrich } = {}) {
   const fire     = createScheduler({ registry, runtime, onBundle, enrich })
   fireRef.current = fire
   runtime.set('State', state)
-  return { registry, state, fire }
+  return { registry, state, fire, allDefs }
 }
 
 // ── basic execution ───────────────────────────────────────────────────────────
@@ -158,6 +158,25 @@ describe('binding context', () => {
   })
 })
 
+describe('match filters', () => {
+  it('handlers run only when payload matches the bound ctx', () => {
+    const { registry, fire } = makeHarness()
+    registry.definePipeline('match:test')
+    registry.addHandler('match:test', {
+      script: `State.set('hits', (State.get('hits') or 0) + 1)`,
+      order: 0,
+      registeredBy: 'match-h',
+      ctx: { self: 'enemy_1' },
+      match: { target: 'self' },
+    })
+
+    fire('match:test', { target: 'enemy_2' })
+    fire('match:test', { target: 'enemy_1' })
+
+    expect(registry.get('hits')).toBe(1)
+  })
+})
+
 // ── depth-first recursion ─────────────────────────────────────────────────────
 
 describe('depth-first nested emit', () => {
@@ -279,7 +298,7 @@ describe('anti-recursion guard', () => {
     const { registry, fire } = makeHarness()
     registry.definePipeline('shared:evt')
 
-    // handler A triggers the re-emit
+    // handler A causes the re-emit
     registry.addHandler('shared:evt', {
       script: `
         if not State.get('looped') then
@@ -287,7 +306,7 @@ describe('anti-recursion guard', () => {
           State.emit('shared:evt', {})
         end
       `,
-      order: 100, registeredBy: 'trigger-A',
+      order: 100, registeredBy: 'hook-A',
     })
     // handler B should run on the re-emitted event
     registry.addHandler('shared:evt', {

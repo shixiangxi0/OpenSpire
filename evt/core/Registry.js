@@ -13,6 +13,7 @@
  *                without conflicting with the dot-path parser used by set/get.
  */
 import { setPath, deepClone } from './util.js'
+import { getEventHooks } from './hooks.js'
 
 export class Registry {
   constructor() {
@@ -142,23 +143,25 @@ export class Registry {
   }
 
   /**
-   * Register all triggers from a module definition into their respective pipelines.
-   *
-   * @param {{ id: string, triggers?: Trigger[] }} moduleDef
-   * @param {{ registeredBy?: string, ctx?: object }} [opts]
+ * Register all event hooks from a module definition into their respective pipelines.
+ *
+ * @param {{ id: string, hooks?: object }} moduleDef
+   * @param {{ registeredBy?: string, ctx?: object, slot?: number | null }} [opts]
    *   registeredBy — key used by unregister(); defaults to moduleDef.id.
    *   ctx          — structured context for this binding instance; exposed to Lua as Ctx.
    */
-  register(moduleDef, { registeredBy, ctx = {} } = {}) {
+  register(moduleDef, { registeredBy, ctx = {}, slot = null } = {}) {
     if (!moduleDef?.id) throw new Error('[Registry] register: moduleDef.id is required')
     const owner = registeredBy ?? moduleDef.id
-    for (const t of moduleDef.triggers ?? []) {
-      this.addHandler(t.event, {
+    for (const t of getEventHooks(moduleDef)) {
+      this.addHandler(t.name, {
         script:       t.script,
         order:        t.order ?? 0,
+        slot,
         registeredBy: owner,
         moduleId:     moduleDef.id,
         ctx,
+        match:        t.match ?? null,
       })
     }
   }
@@ -176,14 +179,16 @@ export class Registry {
 
   /**
    * Insert a single handler into a pipeline, sorted by order descending (stable).
-   * Higher order values execute first; equal-order handlers execute in registration order.
+   * Higher order values execute first.
+   * When order is equal and both handlers define `slot`, lower slots execute first.
+   * Remaining ties preserve insertion order.
    *
    * Throws if the event has not been declared via definePipeline().
    *
    * @param {string} event
-   * @param {{ script: string, order?: number, registeredBy: string, moduleId?: string, ctx?: object }} handler
+   * @param {{ script: string, order?: number, slot?: number | null, registeredBy: string, moduleId?: string, ctx?: object }} handler
    */
-  addHandler(event, { script, order = 0, registeredBy, moduleId, ctx = {} } = {}) {
+  addHandler(event, { script, order = 0, slot = null, registeredBy, moduleId, ctx = {}, match = null } = {}) {
     const pipeline = this._pipelines.get(event)
     if (!pipeline) {
       const moduleLabel = moduleId ? ` (module: "${moduleId}")` : ''
@@ -192,7 +197,27 @@ export class Registry {
     if (typeof script !== 'string') {
       throw new Error(`[Registry] addHandler: script must be a string (event: "${event}")`)
     }
-    this._insertSorted(pipeline.handlers, { script, order, registeredBy, moduleId, ctx })
+    if (match != null) {
+      if (typeof match !== 'object' || Array.isArray(match)) {
+        throw new Error(`[Registry] addHandler: match must be an object (event: "${event}")`)
+      }
+      const entries = Object.entries(match)
+      if (entries.length === 0) {
+        throw new Error(`[Registry] addHandler: match must not be empty (event: "${event}")`)
+      }
+      for (const [payloadKey, ctxKey] of entries) {
+        if (typeof payloadKey !== 'string' || payloadKey.length === 0) {
+          throw new Error(`[Registry] addHandler: match payload keys must be non-empty strings (event: "${event}")`)
+        }
+        if (typeof ctxKey !== 'string' || ctxKey.length === 0) {
+          throw new Error(`[Registry] addHandler: match ctx keys must be non-empty strings (event: "${event}")`)
+        }
+        if (ctx?.[ctxKey] == null) {
+          throw new Error(`[Registry] addHandler: match for "${event}" references missing ctx.${ctxKey}`)
+        }
+      }
+    }
+    this._insertSorted(pipeline.handlers, { script, order, slot, registeredBy, moduleId, ctx, match })
   }
 
   /**
@@ -204,18 +229,33 @@ export class Registry {
   // ─── Private ───────────────────────────────────────────────────────────────
 
   /**
-   * Stable descending insertion by `order`.
-   * "Stable" means equal-order items preserve insertion order (FIFO).
+   * Stable insertion by:
+   *   1. descending `order`
+   *   2. ascending `slot` when both sides define one
+   *   3. insertion order for all remaining ties
    *
-   * Binary search finds the first index i where arr[i].order < item.order
-   * (i.e., item goes before arr[i], after all items with the same or higher order).
+   * Binary search finds the first index i where the current item should sort ahead
+   * of arr[i], while preserving FIFO for equal keys.
    */
   _insertSorted(arr, item) {
     let lo = 0, hi = arr.length
     while (lo < hi) {
       const mid = (lo + hi) >> 1
-      // Move past items with strictly greater OR equal order → stable
-      arr[mid].order >= item.order ? (lo = mid + 1) : (hi = mid)
+      const current = arr[mid]
+      const sameOrder = current.order === item.order
+      const bothSlotted = sameOrder && current.slot != null && item.slot != null
+
+      if (current.order > item.order) {
+        lo = mid + 1
+      } else if (current.order < item.order) {
+        hi = mid
+      } else if (bothSlotted && current.slot < item.slot) {
+        lo = mid + 1
+      } else if (bothSlotted && current.slot > item.slot) {
+        hi = mid
+      } else {
+        lo = mid + 1
+      }
     }
     arr.splice(lo, 0, item)
   }
@@ -225,7 +265,6 @@ export class Registry {
 
 /**
  * @typedef {{ path: string, before: any, after: any }} Patch
- * @typedef {{ event: string, order?: number, script: string }} Trigger
- * @typedef {{ script: string, order: number, registeredBy: string, moduleId?: string, ctx?: object }} Handler
+ * @typedef {{ script: string, order: number, slot?: number | null, registeredBy: string, moduleId?: string, ctx?: object, match?: object | null }} Handler
  * @typedef {{ action: string, handlers: Handler[] }} Pipeline
  */

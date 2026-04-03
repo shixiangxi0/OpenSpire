@@ -7,14 +7,15 @@
 export const EVENTS = {
   // ── entity ──────────────────────────────────────────────
   // target/source 统一约定为实体 id：'player' 或敌人实例 id（如 'jaw_worm_1'）
-  'entity:attack':     { action: 'ENTITY_ATTACK'      },  // 战斗攻击：走 strength/weak/vulnerable/thorns，最终转 entity:damage
-  'entity:damage':     { action: 'ENTITY_DAMAGE'      },  // 固定伤害（会被格挡，不受攻击状态加成）：毒/荆棘反弹等
+  'entity:attack':     { action: 'ENTITY_ATTACK'      },  // 战斗攻击输入：走 strength/weak/vulnerable/thorns，最终转 entity:damage
+  'entity:damage':     { action: 'ENTITY_DAMAGE'      },  // 伤害结算输入：会被格挡，但不再重复走攻击修正
   'entity:heal':       { action: 'ENTITY_HEAL'        },
   'entity:block':      { action: 'ENTITY_BLOCK'       },
-  'entity:loss':       { action: 'ENTITY_LOSS'        },  // 直接扣 HP（穿透格挡，不触发攻击/格挡状态）：主动失血
+  'entity:loss':       { action: 'ENTITY_LOSS'        },  // 实际失去 HP：来自 damage 后净伤，或 direct loss
   'entity:die':        { action: 'ENTITY_DIE'         },
-  'enemy:die':         { action: 'ENEMY_DIE'          },  // target 是敌人实体（非玩家）
-  'enemy:loss':        { action: 'ENEMY_LOSS'         },  // 敌人受到实际 HP 损失（含 actualLoss）
+  'enemy:die':         { action: 'ENEMY_DIE'          },  // 敌人死亡事实（target 非 player）
+  'enemy:action':      { action: 'ENEMY_ACTION'       },  // payload: { target, action }，执行当前 intent
+  'enemy:update':      { action: 'ENEMY_UPDATE'       },  // payload: { target, cause }，刷新下一次 intent；受伤反应用 entity:loss
 
   // ── card（两层）──────────────────────────────────────────
   // 语义层：status 挂钉此层
@@ -49,10 +50,6 @@ export const EVENTS = {
 
   // ── 牌库 ─────────────────────────────────────────────────
   'deck:deplete':      { action: 'DECK_DEPLETE'       },
-
-  // ── enemy 行动 / AI（enemy def 的 triggers 被路由到此）──────────────────────
-  'enemy:action':      { action: 'ENEMY_ACTION'       },  // payload: { target, action }
-  'enemy:ai':          { action: 'ENEMY_AI'           },  // payload: { target, phase: 'init'|'update'|'onLoss' }
 
   // ── 卡牌创建（运行时生成卡牌实例，e.g. anger 复制自身）──────────────────────
   'card:create':       { action: 'CARD_CREATE'        },  // payload: { cardId, destination }

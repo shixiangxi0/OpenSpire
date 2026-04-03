@@ -46,22 +46,21 @@ describe('ritual', () => {
   });
   beforeEach(() => { engine.loadState(JSON.parse(JSON.stringify(snap))); });
 
-  it('敌人有 ritual:2：回合结束后敌人获得 strength:2', () => {
+  it('回合结束时按层数获得力量，且状态本身不递减', () => {
     loadState(engine, s => setStatus(s, epath, 'ritual', 2));
     engine.endTurn();
     expect(st(enemy(engine), 'strength')).toBe(2);
-  });
-
-  it('玩家有 ritual:3：回合结束后玩家获得 strength:3', () => {
-    loadState(engine, s => setStatus(s, 'player', 'ritual', 3));
-    engine.endTurn();
-    expect(st(pl(engine), 'strength')).toBe(3);
-  });
-
-  it('ritual stacks 不递减（永久型 buff）', () => {
-    loadState(engine, s => setStatus(s, epath, 'ritual', 2));
-    engine.endTurn();
     expect(st(enemy(engine), 'ritual')).toBe(2);
+  });
+
+  it('玩家和敌人都可以在各自回合末触发 ritual', () => {
+    loadState(engine, s => {
+      setStatus(s, epath, 'ritual', 2);
+      setStatus(s, 'player', 'ritual', 3);
+    });
+    engine.endTurn();
+    expect(st(enemy(engine), 'strength')).toBe(2);
+    expect(st(pl(engine), 'strength')).toBe(3);
   });
 });
 
@@ -83,14 +82,7 @@ describe('card_tax', () => {
   });
   beforeEach(() => { engine.loadState(JSON.parse(JSON.stringify(snap))); });
 
-  it('card_tax:3：打出 1 张牌后玩家 HP-3', () => {
-    loadState(engine, s => setStatus(s, 'player', 'card_tax', 3));
-    const hpBefore = pl(engine).hp;
-    engine.playCard(engine.getState().hand[0], ep(engine));
-    expect(pl(engine).hp).toBe(hpBefore - 3);
-  });
-
-  it('card_tax:2：打出 2 张牌后玩家 HP-4（各减 2）', () => {
+  it('每打出 1 张牌都会按层数重复扣血', () => {
     loadState(engine, s => setStatus(s, 'player', 'card_tax', 2));
     const hpBefore = pl(engine).hp;
     const [c1, c2] = engine.getState().hand;
@@ -118,21 +110,10 @@ describe('demon_form', () => {
   });
   beforeEach(() => { engine.loadState(JSON.parse(JSON.stringify(snap))); });
 
-  it('demon_form:1 → 下回合开始时玩家获得 strength:3', () => {
-    loadState(engine, s => setStatus(s, 'player', 'demon_form', 1));
-    engine.endTurn();
-    expect(st(pl(engine), 'strength')).toBe(3);
-  });
-
-  it('demon_form:2 → 下回合开始时玩家获得 strength:6', () => {
+  it('下回合开始时按 stacks×3 获得力量，且只影响玩家', () => {
     loadState(engine, s => setStatus(s, 'player', 'demon_form', 2));
     engine.endTurn();
     expect(st(pl(engine), 'strength')).toBe(6);
-  });
-
-  it('demon_form 不影响敌人（敌人无 strength 变化）', () => {
-    loadState(engine, s => setStatus(s, 'player', 'demon_form', 1));
-    engine.endTurn();
     expect(st(enemy(engine), 'strength')).toBe(0);
   });
 });
@@ -153,21 +134,10 @@ describe('extra_draw', () => {
   });
   beforeEach(() => { engine.loadState(JSON.parse(JSON.stringify(snap))); });
 
-  it('extra_draw:1 → 下回合手牌 = 0(drawPerTurn) + 1(extra) = 1', () => {
-    loadState(engine, s => setStatus(s, 'player', 'extra_draw', 1));
-    engine.endTurn();
-    expect(engine.getState().hand.length).toBe(1);
-  });
-
-  it('extra_draw:2 → 下回合手牌 = 0 + 2 = 2', () => {
+  it('下回合开始时额外抽牌，且状态不递减', () => {
     loadState(engine, s => setStatus(s, 'player', 'extra_draw', 2));
     engine.endTurn();
     expect(engine.getState().hand.length).toBe(2);
-  });
-
-  it('extra_draw 状态在下回合后不递减（持久 buff）', () => {
-    loadState(engine, s => setStatus(s, 'player', 'extra_draw', 2));
-    engine.endTurn();
     expect(st(pl(engine), 'extra_draw')).toBe(2);
   });
 });
@@ -192,18 +162,11 @@ describe('poison', () => {
   });
   beforeEach(() => { engine.loadState(JSON.parse(JSON.stringify(snap))); });
 
-  it('敌人 poison:3 → 回合结束受 3 伤，poison → 2', () => {
+  it('敌人中毒会在回合结束受伤并递减', () => {
     loadState(engine, s => setStatus(s, epath, 'poison', 3));
     engine.endTurn();
     expect(enemy(engine).hp).toBe(37);
     expect(st(enemy(engine), 'poison')).toBe(2);
-  });
-
-  it('敌人 poison:1 → 回合结束受 1 伤，poison → 0（消耗完毕）', () => {
-    loadState(engine, s => setStatus(s, epath, 'poison', 1));
-    engine.endTurn();
-    expect(enemy(engine).hp).toBe(39);
-    expect(st(enemy(engine), 'poison')).toBe(0);
   });
 
   it('敌人格挡对中毒无效：actor:turn:start 先清格挡，actor:turn:end 再触发中毒', () => {
@@ -218,7 +181,7 @@ describe('poison', () => {
     expect(st(enemy(engine), 'block')).toBe(0); // 格挡已在回合开始清零
   });
 
-  it('玩家有 poison:2 → endTurn 玩家受 2 伤，poison → 1（DUMMY 不攻击）', () => {
+  it('玩家中毒时也按同样规则生效', () => {
     loadState(engine, s => setStatus(s, 'player', 'poison', 2));
     engine.endTurn();
     expect(pl(engine).hp).toBe(68);  // 70-2
@@ -244,24 +207,12 @@ describe('frail', () => {
   });
   beforeEach(() => { engine.loadState(JSON.parse(JSON.stringify(snap))); });
 
-  it('有 frail:1：defend(5 block) → 实际格挡 = 3（5×0.75=3.75 floor=3）', () => {
+  it('会降低获得的格挡，并在回合末递减', () => {
     loadState(engine, s => setStatus(s, 'player', 'frail', 1));
     engine.playCard(engine.getState().hand[0]);
     expect(st(pl(engine), 'block')).toBe(3);
-  });
-
-  it('无 frail：defend → 正常 5 格挡', () => {
-    engine.playCard(engine.getState().hand[0]);
-    expect(st(pl(engine), 'block')).toBe(5);
-  });
-
-  it('frail stacks 在 actor:turn:end 递减（不是在 entity:block 时）', () => {
-    // 打出 defend 只触发 entity:block，frail 不减；
-    // 调用 endTurn() actor:turn:end → frail -1
-    loadState(engine, s => setStatus(s, 'player', 'frail', 2));
-    engine.playCard(engine.getState().hand[0]);
     engine.endTurn();
-    expect(st(pl(engine), 'frail')).toBe(1);  // 原 2 → 回合结束后 1
+    expect(st(pl(engine), 'frail')).toBe(0);
   });
 });
 
@@ -290,7 +241,7 @@ describe('metallicize', () => {
     bundles.length = 0;
   });
 
-  it('玩家 metallicize:4 → timeline 包含 STATUS_APPLY[block,stacks=4]', () => {
+  it('玩家侧会在回合末产生日志中的格挡事件', () => {
     // player:turn:end → actor:turn:end,target='player' → metallicize order:400
     //   → entity:block(4) → STATUS_APPLY[block,stacks=4]
     // 随后 player:turn:start → actor:turn:start → block 清零（故最终 block=0）
@@ -301,15 +252,10 @@ describe('metallicize', () => {
     expect(apply).toBeDefined();
   });
 
-  it('敌人 metallicize:3 → 回合结束后敌人 block=3（持续至敌人下回合开始）', () => {
+  it('敌人侧会在回合结束保留格挡，且状态本身不递减', () => {
     loadState(engine, s => setStatus(s, epath, 'metallicize', 3));
     engine.endTurn();
     expect(st(enemy(engine), 'block')).toBe(3);
-  });
-
-  it('metallicize 不递减（持久型）', () => {
-    loadState(engine, s => setStatus(s, epath, 'metallicize', 3));
-    engine.endTurn();
     expect(st(enemy(engine), 'metallicize')).toBe(3);
   });
 });

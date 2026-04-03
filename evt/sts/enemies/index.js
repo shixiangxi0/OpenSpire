@@ -1,15 +1,23 @@
-﻿/**
+/**
  * modules/enemies/index.js — 敌人模块
  *
- * 每个敌人与 card / status 结构完全一致：
+ * 敌人与 card / status 共用同一套 hooks 机制：
  *   - display: { name } 供 UI 渲染名称
  *   - actions: { [actionId]: { type, amount?, desc } } 纯 UI 数据（意图展示）
- *   - triggers: Trigger[]  事件处理器，通过 State.bind 安装进管道
- *     battle:start → battleStartCore 调用
- *       State.bind({ key: eid, kind: 'enemy', id: typeId, ctx: { self: eid } })
- *     响应事件：
- *       enemy:action  payload: { target, action }  — 执行一次行动
- *       enemy:ai      payload: { target, phase }    — AI 生命周期 'init'|'update'|'onLoss'
+ *   - hooks: { 'event:<name>': script | { script, order?, match? } }
+ *
+ * battle:start 时由 core 统一 bind：
+ *   State.bind({ key = eid, kind = 'enemy', id = typeId, ctx = { self = eid } })
+ *
+ * 之后由 core 发出敌人控制事件：
+ *   enemy:action    payload: { target, action }
+ *   enemy:update    payload: { target, cause = 'init' | 'turn' }
+ *
+ * 受伤阈值、被打反应这类逻辑，通常直接挂在通用事实事件：
+ *   entity:loss     payload: { target, actualLoss, source?, action?, ... }
+ *
+ * 约定：实例过滤通过 match: { target: 'self' } 完成，
+ * 不在 Lua 里手写 `if Event.target ~= Ctx.self then return end`。
  */
 
 // ── 颚虫 ──────────────────────────────────────────────────────────────────────
@@ -21,41 +29,40 @@ export const jaw_worm = {
     thrash: { type: 'attack', desc: '造成 7 点伤害。施加 3 层力量。' },
     bellow: { type: 'defend', desc: '获得 6 点格挡。施加 3 层力量。' },
   },
-  triggers: [
-    { event: 'enemy:action', order: 0, script: `
-if Event.target ~= Ctx.self then return end
+  hooks: {
+    'event:enemy:action': { match: { target: 'self' }, script: `
 local a = Event.action
 if a == 'bite' then
-  State.emit('entity:attack', { target='player', amount=11, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=11, source=Ctx.self, action=a })
 elseif a == 'thrash' then
-  State.emit('entity:attack', { target='player', amount=7, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=7, source=Ctx.self, action=a })
   State.emit('status:apply', { target=Ctx.self, typeId='strength', stacks=3 })
 elseif a == 'bellow' then
   State.emit('entity:block', { target=Ctx.self, amount=6 })
   State.emit('status:apply', { target=Ctx.self, typeId='strength', stacks=3 })
 end
 ` },
-    { event: 'enemy:ai', order: 0, script: `
-if Event.target ~= Ctx.self then return end
-local phase = Event.phase
-if phase == 'init' then
+    'event:enemy:update': { match: { target: 'self' }, script: `
+if Event.cause == 'init' then
   State.set('entities', Ctx.self, 'intent', 'bite')
-elseif phase == 'onLoss' then
-  local pct = (State.get('entities', Ctx.self, 'hp') or 0) / (State.get('entities', Ctx.self, 'maxHp') or 1)
-  if pct < 0.3 and State.get('entities', Ctx.self, 'phase') ~= 'low' then
-    State.set('entities', Ctx.self, 'phase', 'low')
-  end
-elseif phase == 'update' then
-  local p = State.get('entities', Ctx.self, 'phase')
-  if p == 'low' then
-    State.set('entities', Ctx.self, 'intent', 'bellow')
-    return
-  end
-  local cur = State.get('entities', Ctx.self, 'intent') or 'bite'
-  State.set('entities', Ctx.self, 'intent', cur == 'bite' and 'thrash' or 'bite')
+  return
+end
+local p = State.get('entities', Ctx.self, 'phase')
+if p == 'low' then
+  State.set('entities', Ctx.self, 'intent', 'bellow')
+  return
+end
+local cur = State.get('entities', Ctx.self, 'intent') or 'bite'
+State.set('entities', Ctx.self, 'intent', cur == 'bite' and 'thrash' or 'bite')
+` },
+    'event:entity:loss': { match: { target: 'self' }, script: `
+if Event.isFatal then return end
+local pct = (State.get('entities', Ctx.self, 'hp') or 0) / (State.get('entities', Ctx.self, 'maxHp') or 1)
+if pct < 0.3 and State.get('entities', Ctx.self, 'phase') ~= 'low' then
+  State.set('entities', Ctx.self, 'phase', 'low')
 end
 ` },
-  ],
+  },
 };
 
 // ── 狂信者 ────────────────────────────────────────────────────────────────────
@@ -66,26 +73,23 @@ export const cultist = {
     incantation: { type: 'buff',   desc: '施加 3 层件式（每回合获得 3 层力量）。' },
     dark_strike: { type: 'attack', desc: '造成 6 点伤害。' },
   },
-  triggers: [
-    { event: 'enemy:action', order: 0, script: `
-if Event.target ~= Ctx.self then return end
+  hooks: {
+    'event:enemy:action': { match: { target: 'self' }, script: `
 local a = Event.action
 if a == 'incantation' then
   State.emit('status:apply', { target=Ctx.self, typeId='ritual', stacks=3 })
 elseif a == 'dark_strike' then
-  State.emit('entity:attack', { target='player', amount=6, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=6, source=Ctx.self, action=a })
 end
 ` },
-    { event: 'enemy:ai', order: 0, script: `
-if Event.target ~= Ctx.self then return end
-local phase = Event.phase
-if phase == 'init' then
+    'event:enemy:update': { match: { target: 'self' }, script: `
+if Event.cause == 'init' then
   State.set('entities', Ctx.self, 'intent', 'incantation')
-elseif phase == 'update' then
-  State.set('entities', Ctx.self, 'intent', 'dark_strike')
+  return
 end
+State.set('entities', Ctx.self, 'intent', 'dark_strike')
 ` },
-  ],
+  },
 };
 
 // ── 赤毒蛞蝓 ──────────────────────────────────────────────────────────────────
@@ -96,28 +100,25 @@ export const louse_red = {
     bite: { type: 'attack', desc: '造成 6 点伤害。' },
     grow: { type: 'buff',   desc: '施加 3 层力量。' },
   },
-  triggers: [
-    { event: 'enemy:action', order: 0, script: `
-if Event.target ~= Ctx.self then return end
+  hooks: {
+    'event:enemy:action': { match: { target: 'self' }, script: `
 local a = Event.action
 if a == 'bite' then
-  State.emit('entity:attack', { target='player', amount=6, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=6, source=Ctx.self, action=a })
 elseif a == 'grow' then
   State.emit('status:apply', { target=Ctx.self, typeId='strength', stacks=3 })
 end
 ` },
-    { event: 'enemy:ai', order: 0, script: `
-if Event.target ~= Ctx.self then return end
-local phase = Event.phase
-if phase == 'init' then
+    'event:enemy:update': { match: { target: 'self' }, script: `
+if Event.cause == 'init' then
   State.set('entities', Ctx.self, 'intent', 'bite')
-elseif phase == 'update' then
-  local turns = (State.get('entities', Ctx.self, 'turns') or 0) + 1
-  State.set('entities', Ctx.self, 'turns', turns)
-  State.set('entities', Ctx.self, 'intent', turns % 3 == 0 and 'grow' or 'bite')
+  return
 end
+local turns = (State.get('entities', Ctx.self, 'turns') or 0) + 1
+State.set('entities', Ctx.self, 'turns', turns)
+State.set('entities', Ctx.self, 'intent', turns % 3 == 0 and 'grow' or 'bite')
 ` },
-  ],
+  },
 };
 
 // ── 绿毒蛞蝓 ──────────────────────────────────────────────────────────────────
@@ -128,28 +129,25 @@ export const louse_green = {
     bite: { type: 'attack', desc: '造成 6 点伤害。' },
     spit: { type: 'debuff', desc: '施加 1 层虚弱。' },
   },
-  triggers: [
-    { event: 'enemy:action', order: 0, script: `
-if Event.target ~= Ctx.self then return end
+  hooks: {
+    'event:enemy:action': { match: { target: 'self' }, script: `
 local a = Event.action
 if a == 'bite' then
-  State.emit('entity:attack', { target='player', amount=6, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=6, source=Ctx.self, action=a })
 elseif a == 'spit' then
   State.emit('status:apply', { target='player', typeId='weak', stacks=1 })
 end
 ` },
-    { event: 'enemy:ai', order: 0, script: `
-if Event.target ~= Ctx.self then return end
-local phase = Event.phase
-if phase == 'init' then
+    'event:enemy:update': { match: { target: 'self' }, script: `
+if Event.cause == 'init' then
   State.set('entities', Ctx.self, 'intent', 'bite')
-elseif phase == 'update' then
-  local turns = (State.get('entities', Ctx.self, 'turns') or 0) + 1
-  State.set('entities', Ctx.self, 'turns', turns)
-  State.set('entities', Ctx.self, 'intent', turns % 2 == 0 and 'spit' or 'bite')
+  return
 end
+local turns = (State.get('entities', Ctx.self, 'turns') or 0) + 1
+State.set('entities', Ctx.self, 'turns', turns)
+State.set('entities', Ctx.self, 'intent', turns % 2 == 0 and 'spit' or 'bite')
 ` },
-  ],
+  },
 };
 
 // ── 诅咒织者 ──────────────────────────────────────────────────────────────────
@@ -168,12 +166,11 @@ export const curse_weaver = {
     slam:          { type: 'attack', desc: '猛力重击，造成 28 点伤害。' },
     curse_nova:    { type: 'debuff', desc: '契约税 +3 层，并造成 10 点 AOE 伤害（包括玩家）。' },
   },
-  triggers: [
-    { event: 'enemy:action', order: 0, script: `
-if Event.target ~= Ctx.self then return end
+  hooks: {
+    'event:enemy:action': { match: { target: 'self' }, script: `
 local a = Event.action
 if a == 'shadow_strike' then
-  State.emit('entity:attack', { target='player', amount=18, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=18, source=Ctx.self, action=a })
 elseif a == 'voodoo' then
   State.emit('status:apply', { target='player', typeId='vulnerable', stacks=2 })
   State.emit('status:apply', { target='player', typeId='weak',       stacks=2 })
@@ -181,54 +178,54 @@ elseif a == 'rejuvenate' then
   State.emit('entity:block', { target=Ctx.self, amount=24 })
   State.emit('status:apply', { target='player', typeId='card_tax', stacks=1 })
 elseif a == 'slam' then
-  State.emit('entity:attack', { target='player', amount=28, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=28, source=Ctx.self, action=a })
 elseif a == 'curse_nova' then
   State.emit('status:apply', { target='player', typeId='card_tax', stacks=3 })
-  State.emit('entity:attack', { target='player', amount=10, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=10, source=Ctx.self, action=a })
 end
 ` },
-    { event: 'enemy:ai', order: 0, script: `
-if Event.target ~= Ctx.self then return end
-local phase = Event.phase
-if phase == 'init' then
+    'event:enemy:update': { match: { target: 'self' }, script: `
+if Event.cause == 'init' then
   State.emit('status:apply', { target='player', typeId='card_tax', stacks=2 })
   State.set('entities', Ctx.self, 'intent', 'shadow_strike')
   State.set('entities', Ctx.self, 'turns', 1)
-elseif phase == 'onLoss' then
-  local pct = (State.get('entities', Ctx.self, 'hp') or 0) / (State.get('entities', Ctx.self, 'maxHp') or 1)
-  if pct < 0.35 and State.get('entities', Ctx.self, 'phase') ~= 'burst' then
-    State.set('entities', Ctx.self, 'phase', 'burst')
-    State.set('entities', Ctx.self, 'turns', 0)
-  elseif pct < 0.65 and State.get('entities', Ctx.self, 'phase') == nil then
-    State.set('entities', Ctx.self, 'phase', 'mid')
-    State.set('entities', Ctx.self, 'turns', 0)
+  return
+end
+local p = State.get('entities', Ctx.self, 'phase')
+local turns = (State.get('entities', Ctx.self, 'turns') or 0) + 1
+State.set('entities', Ctx.self, 'turns', turns)
+local next
+if p == 'burst' then
+  next = turns % 2 == 1 and 'curse_nova' or 'slam'
+elseif p == 'mid' then
+  local t = turns % 4
+  if     t == 1 then next = 'slam'
+  elseif t == 2 then next = 'voodoo'
+  elseif t == 3 then next = 'slam'
+  else                next = 'rejuvenate'
   end
-elseif phase == 'update' then
-  local p = State.get('entities', Ctx.self, 'phase')
-  local turns = (State.get('entities', Ctx.self, 'turns') or 0) + 1
-  State.set('entities', Ctx.self, 'turns', turns)
-  local next
-  if p == 'burst' then
-    next = turns % 2 == 1 and 'curse_nova' or 'slam'
-  elseif p == 'mid' then
-    local t = turns % 4
-    if     t == 1 then next = 'slam'
-    elseif t == 2 then next = 'voodoo'
-    elseif t == 3 then next = 'slam'
-    else                next = 'rejuvenate'
-    end
-  else
-    local t = turns % 4
-    if     t == 1 then next = 'shadow_strike'
-    elseif t == 2 then next = 'voodoo'
-    elseif t == 3 then next = 'shadow_strike'
-    else                next = 'rejuvenate'
-    end
+else
+  local t = turns % 4
+  if     t == 1 then next = 'shadow_strike'
+  elseif t == 2 then next = 'voodoo'
+  elseif t == 3 then next = 'shadow_strike'
+  else                next = 'rejuvenate'
   end
-  State.set('entities', Ctx.self, 'intent', next)
+end
+State.set('entities', Ctx.self, 'intent', next)
+` },
+    'event:entity:loss': { match: { target: 'self' }, script: `
+if Event.isFatal then return end
+local pct = (State.get('entities', Ctx.self, 'hp') or 0) / (State.get('entities', Ctx.self, 'maxHp') or 1)
+if pct < 0.35 and State.get('entities', Ctx.self, 'phase') ~= 'burst' then
+  State.set('entities', Ctx.self, 'phase', 'burst')
+  State.set('entities', Ctx.self, 'turns', 0)
+elseif pct < 0.65 and State.get('entities', Ctx.self, 'phase') == nil then
+  State.set('entities', Ctx.self, 'phase', 'mid')
+  State.set('entities', Ctx.self, 'turns', 0)
 end
 ` },
-  ],
+  },
 };
 
 // ── 铁甲傀儡 ──────────────────────────────────────────────────────────────────
@@ -243,50 +240,49 @@ export const iron_golem = {
     rend:       { type: 'attack', desc: '撕裂攻击：造成 14 点伤害，施加 2 层易伤。' },
     obliterate: { type: 'attack', desc: '凶猛暴击：造成 30 点伤害！' },
   },
-  triggers: [
-    { event: 'enemy:action', order: 0, script: `
-if Event.target ~= Ctx.self then return end
+  hooks: {
+    'event:enemy:action': { match: { target: 'self' }, script: `
 local a = Event.action
 if a == 'slam' then
-  State.emit('entity:attack', { target='player', amount=20, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=20, source=Ctx.self, action=a })
 elseif a == 'fortify' then
   State.emit('status:apply', { target=Ctx.self, typeId='strength', stacks=4 })
 elseif a == 'rend' then
-  State.emit('entity:attack', { target='player', amount=14, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=14, source=Ctx.self, action=a })
   State.emit('status:apply', { target='player', typeId='vulnerable', stacks=2 })
 elseif a == 'obliterate' then
-  State.emit('entity:attack', { target='player', amount=30, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=30, source=Ctx.self, action=a })
 end
 ` },
-    { event: 'enemy:ai', order: 0, script: `
-if Event.target ~= Ctx.self then return end
-local phase = Event.phase
-if phase == 'init' then
+    'event:enemy:update': { match: { target: 'self' }, script: `
+if Event.cause == 'init' then
   State.emit('status:apply', { target=Ctx.self, typeId='thorns',      stacks=8 })
   State.emit('status:apply', { target=Ctx.self, typeId='metallicize', stacks=5 })
   State.set('entities', Ctx.self, 'intent', 'slam')
-elseif phase == 'onLoss' then
-  local pct = (State.get('entities', Ctx.self, 'hp') or 0) / (State.get('entities', Ctx.self, 'maxHp') or 1)
-  if pct < 0.30 and State.get('entities', Ctx.self, 'phase') ~= 'rage' then
-    State.set('entities', Ctx.self, 'phase', 'rage')
-  elseif pct < 0.60 and State.get('entities', Ctx.self, 'phase') == nil then
-    State.set('entities', Ctx.self, 'phase', 'mid')
-  end
-elseif phase == 'update' then
-  local p   = State.get('entities', Ctx.self, 'phase')
-  local cur = State.get('entities', Ctx.self, 'intent') or 'slam'
-  local next
-  if p == 'rage' then
-    next = 'obliterate'
-  elseif p == 'mid' then
-    next = (cur == 'slam') and 'rend' or 'slam'
-  else
-    next = (cur == 'slam') and 'fortify' or 'slam'
-  end
-  State.set('entities', Ctx.self, 'intent', next)
+  return
+end
+local p   = State.get('entities', Ctx.self, 'phase')
+local cur = State.get('entities', Ctx.self, 'intent') or 'slam'
+local next
+if p == 'rage' then
+  next = 'obliterate'
+elseif p == 'mid' then
+  next = (cur == 'slam') and 'rend' or 'slam'
+else
+  next = (cur == 'slam') and 'fortify' or 'slam'
+end
+State.set('entities', Ctx.self, 'intent', next)
+` },
+    'event:entity:loss': { match: { target: 'self' }, script: `
+if Event.isFatal then return end
+local pct = (State.get('entities', Ctx.self, 'hp') or 0) / (State.get('entities', Ctx.self, 'maxHp') or 1)
+if pct < 0.30 and State.get('entities', Ctx.self, 'phase') ~= 'rage' then
+  State.set('entities', Ctx.self, 'phase', 'rage')
+elseif pct < 0.60 and State.get('entities', Ctx.self, 'phase') == nil then
+  State.set('entities', Ctx.self, 'phase', 'mid')
 end
 ` },
-  ],
+  },
 };
 
 // ── 瘟疫法师 ──────────────────────────────────────────────────────────────────
@@ -299,44 +295,40 @@ export const plague_mage = {
     plague:    { type: 'attack', desc: '毒击：造成 10 点伤害，施加 5 层中毒。' },
     virulence: { type: 'debuff', desc: '疫潮：施加 7 层中毒和 2 层脆弱。' },
   },
-  triggers: [
-    { event: 'enemy:action', order: 0, script: `
-if Event.target ~= Ctx.self then return end
+  hooks: {
+    'event:enemy:action': { match: { target: 'self' }, script: `
 local a = Event.action
 if a == 'infect' then
   State.emit('status:apply', { target='player', typeId='poison', stacks=5 })
 elseif a == 'plague' then
-  State.emit('entity:attack', { target='player', amount=10, source=Ctx.self })
+  State.emit('entity:attack', { target='player', amount=10, source=Ctx.self, action=a })
   State.emit('status:apply',  { target='player', typeId='poison', stacks=5 })
 elseif a == 'virulence' then
   State.emit('status:apply', { target='player', typeId='poison', stacks=7 })
   State.emit('status:apply', { target='player', typeId='frail',  stacks=2 })
 end
 ` },
-    { event: 'enemy:ai', order: 0, script: `
-if Event.target ~= Ctx.self then return end
-local phase = Event.phase
-if phase == 'init' then
+    'event:enemy:update': { match: { target: 'self' }, script: `
+if Event.cause == 'init' then
   State.set('entities', Ctx.self, 'intent', 'infect')
-elseif phase == 'onLoss' then
-  local pct = (State.get('entities', Ctx.self, 'hp') or 0) / (State.get('entities', Ctx.self, 'maxHp') or 1)
-  if pct < 0.50 and State.get('entities', Ctx.self, 'phase') ~= 'frenzy' then
-    State.set('entities', Ctx.self, 'phase', 'frenzy')
-  end
-elseif phase == 'update' then
-  local p   = State.get('entities', Ctx.self, 'phase')
-  local cur = State.get('entities', Ctx.self, 'intent') or 'infect'
-  local next
-  if p == 'frenzy' then
-    next = (cur == 'virulence') and 'plague' or 'virulence'
-  else
-    next = (cur == 'infect') and 'plague' or 'infect'
-  end
-  State.set('entities', Ctx.self, 'intent', next)
+  return
+end
+local p   = State.get('entities', Ctx.self, 'phase')
+local cur = State.get('entities', Ctx.self, 'intent') or 'infect'
+local next
+if p == 'frenzy' then
+  next = (cur == 'virulence') and 'plague' or 'virulence'
+else
+  next = (cur == 'infect') and 'plague' or 'infect'
+end
+State.set('entities', Ctx.self, 'intent', next)
+` },
+    'event:entity:loss': { match: { target: 'self' }, script: `
+if Event.isFatal then return end
+local pct = (State.get('entities', Ctx.self, 'hp') or 0) / (State.get('entities', Ctx.self, 'maxHp') or 1)
+if pct < 0.50 and State.get('entities', Ctx.self, 'phase') ~= 'frenzy' then
+  State.set('entities', Ctx.self, 'phase', 'frenzy')
 end
 ` },
-  ],
+  },
 };
-
-
-

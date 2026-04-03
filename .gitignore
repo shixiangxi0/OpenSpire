@@ -7,3 +7,10 @@ node_modules/
 openspire-save.json
 evt/test/
 
+index.html
+evt/test/engine.test.js
+evt/test/helpers.js
+evt/test/registry.test.js
+evt/test/scheduler.test.js
+evt/test/cards/cards.test.js
+evt/test/statuses/statuses.test.js

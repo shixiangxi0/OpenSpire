@@ -36,7 +36,6 @@ import {
   healCore,
   blockCore,
   entityDieCore,
-  enemyLossAiCore,
   battleStartCore,
   battleEndCore,
   cardMoveCore,
@@ -96,10 +95,9 @@ export const stsModule = {
 
     // ── STS-specific entity rules ─────────────────────────────────────────
     entityDieCore,       // entity:die     → enemy:die + slot cleanup + victory check
-    enemyLossAiCore,     // entity:loss    → enemy:ai { phase='onLoss' }
 
     // ── Battle lifecycle ──────────────────────────────────────────────────
-    battleStartCore,     // battle:start   → player:turn:start
+    battleStartCore,     // battle:start   → bind enemies + enemy:update(init) + player:turn:start
     battleEndCore,       // battle:end     → set battle.over + battle.victory
 
     // ── Card pipeline ─────────────────────────────────────────────────────
@@ -120,13 +118,13 @@ export const stsModule = {
     turnCounterCore,     // player:turn:start → increment turn counter
     playerTurnEndCore,   // player:turn:end   → discard hand
     actorTurnBridgeCore, // player:turn:start/end → actor:turn:start/end (for statuses)
-    turnSequenceCore,    // turn:end       → enemy actions → player:turn:start
+    turnSequenceCore,    // turn:end       → enemy actions / intent refresh → player:turn:start
     cardCreateCore,      // card:create    → instantiate card, emit card:move
   ],
 
   // Definition data, keyed by kind then id.
-  // All three kinds share the same schema: `triggers[]` consumed via State.bind.
-  // Enemies additionally carry `actions{}` (pure UI data — intent display only, no script fields).
+  // Cards / statuses / enemies all expose unified `hooks{}` event handlers.
+  // Enemies additionally carry `actions{}` for pure UI intent display.
   defs: {
     card:   byId(Object.values(ironcladCards)),
     status: byId(Object.values(statusDefs)),

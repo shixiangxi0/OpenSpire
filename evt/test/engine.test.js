@@ -29,27 +29,21 @@ const testModule = {
   rules: [
     {
       id: 'rule:actor:damage:apply',
-      triggers: [{
-        event:  'actor:damage',
-        order:  0,
-        script: `
+      hooks: { 'event:actor:damage': `
           local hp = State.get('actors', Event.target, 'hp') or 0
           local net = math.max(0, hp - (Event.amount or 0))
           State.set('actors', Event.target, 'hp', net)
         `,
-      }],
+      },
     },
     {
       id: 'rule:actor:heal:apply',
-      triggers: [{
-        event:  'actor:heal',
-        order:  0,
-        script: `
+      hooks: { 'event:actor:heal': `
           local hp    = State.get('actors', Event.target, 'hp') or 0
           local maxHp = State.get('actors', Event.target, 'maxHp') or hp
           State.set('actors', Event.target, 'hp', math.min(maxHp, hp + (Event.amount or 0)))
         `,
-      }],
+      },
     },
   ],
 
@@ -58,8 +52,7 @@ const testModule = {
     effect: {
       shield: {
         id: 'shield',
-        triggers: [{
-          event:  'actor:damage',
+        hooks: { 'event:actor:damage': {
           order:  200,              // runs before the damage rule (order 0)
           script: `
             local cur = State.get('actors', Ctx.who, 'shield') or 0
@@ -68,25 +61,25 @@ const testModule = {
             Event.amount = Event.amount - absorbed
             State.set('actors', Ctx.who, 'shield', cur - absorbed)
           `,
-        }],
+        } },
       },
     },
     status: {
       marked: {
         id: 'marked',
-        triggers: [{ event: 'game:tick', order: 0, script: `return` }],
+        hooks: { 'event:game:tick': `return` },
       },
     },
     enemy: {
       slug: {
         id: 'slug',
-        triggers: [{ event: 'game:tick', order: 0, script: `return` }],
+        hooks: { 'event:game:tick': `return` },
       },
     },
     card: {
       ping: {
         id: 'ping',
-        triggers: [{ event: 'game:tick', order: 0, script: `return` }],
+        hooks: { 'event:game:tick': `return` },
       },
     },
   },
@@ -271,15 +264,15 @@ describe('use()', () => {
 
   it('rejects duplicate rule ids', async () => {
     const e = await createEngine()
-    e.use({ events: { 'x:a': {} }, rules: [{ id: 'dup:rule', triggers: [{ event: 'x:a', script: 'return' }] }] })
-    expect(() => e.use({ rules: [{ id: 'dup:rule', triggers: [{ event: 'x:a', script: 'return' }] }] }))
+    e.use({ events: { 'x:a': {} }, rules: [{ id: 'dup:rule', hooks: { 'event:x:a': 'return' } }] })
+    expect(() => e.use({ rules: [{ id: 'dup:rule', hooks: { 'event:x:a': 'return' } }] }))
       .toThrow(/duplicate rule id/)
   })
 
   it('rejects duplicate defs', async () => {
     const e = await createEngine()
-    e.use({ defs: { effect: { burn: { id: 'burn', triggers: [] } } } })
-    expect(() => e.use({ defs: { effect: { burn: { id: 'burn', triggers: [] } } } }))
+    e.use({ defs: { effect: { burn: { id: 'burn', hooks: {} } } } })
+    expect(() => e.use({ defs: { effect: { burn: { id: 'burn', hooks: {} } } } }))
       .toThrow(/duplicate def/)
   })
 })

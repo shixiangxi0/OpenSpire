@@ -16,6 +16,8 @@
   ],
   "scripts": {
     "start": "tsx evt/bin/openspire.js",
+    "sts": "tsx evt/bin/openspire.js",
+    "balatro": "tsx evt/bin/balatro.js",
     "json": "tsx evt/bin/openspire.js json",
     "test": "vitest run"
   },

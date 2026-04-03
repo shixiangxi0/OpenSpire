@@ -29,8 +29,8 @@ export function buildBattleStore({ initial = {}, cards = {}, character = {} }) {
       typeof c === 'string' ? { cardId: c } : c;
     seenIds[cardId] = (seenIds[cardId] ?? 0) + 1;
     const iid = instanceId ?? `${cardId}_${seenIds[cardId]}`;
-    // 只保留运行时数据字段，剥离定义层字段（triggers / display）
-    const { triggers: _, display: __, ...baseData } = cards[cardId] ?? {};
+  // 只保留运行时数据字段，剥离定义层字段（hooks / display）
+  const { hooks: _, display: __, ...baseData } = cards[cardId] ?? {};
     cardEntities[iid] = { cardId, ...baseData, ...overrides };
     deckIds.push(iid);
   }

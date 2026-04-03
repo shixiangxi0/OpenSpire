@@ -79,10 +79,9 @@ scenarios/     # 전투 시나리오 JSON 설정
 export const myCard = {
   id: 'my_card',
   cost: 1,
-  triggers: [{
-    event: 'card:effect',
-    script: `State.emit('entity:attack', { target = Event.target, amount = 10 })`
-  }]
+  hooks: {
+    'event:card:effect': `State.emit('entity:attack', { target = Event.target, amount = 10 })`
+  }
 };
 ```
 

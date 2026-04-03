@@ -1,11 +1,11 @@
-﻿/**
+/**
  * ui/App.jsx — 杀戮尖塔 CLI 主界面（ink）
  *
- * 使用方式：pnpm start [scenarios/xxx.json]
- * 支持双语：pnpm start [场景名] --lang en
+ * 使用方式：pnpm sts [scenarios/xxx.json]
+ * 支持双语：pnpm sts [场景名] --lang en
  */
-import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput, useApp } from 'ink';
+import React, { useEffect, useState } from 'react';
+import { Box, Text, useApp, useInput } from 'ink';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createSession } from '../evt/game/session.js';
@@ -13,54 +13,194 @@ import { getLocale } from '../evt/game/locale.js';
 
 const SAVE_FILE = resolve('openspire-save.json');
 
-// ── 常量 ──────────────────────────────────────────────────────────────────
-
 const CARD_TYPE_COLOR = {
-  attack: 'red', skill: 'cyan', power: 'yellow',
+  attack: 'red',
+  skill: 'cyan',
+  power: 'yellow',
 };
+
 const INTENT_COLOR = {
-  attack: 'red', defend: 'blue', buff: 'yellow', debuff: 'magenta',
+  attack: 'red',
+  defend: 'blue',
+  buff: 'yellow',
+  debuff: 'magenta',
 };
 
-// ── HpBar ──────────────────────────────────────────────────────────────────
+function readTerminalSize() {
+  return {
+    columns: process.stdout?.columns ?? 120,
+    rows: process.stdout?.rows ?? 40,
+  };
+}
 
-function HpBar({ cur, max, width = 10 }) {
-  const filled = Math.round((cur / Math.max(1, max)) * width);
-  const pct = Math.round((cur / Math.max(1, max)) * 100);
-  const color = pct > 50 ? 'green' : pct > 25 ? 'yellow' : 'red';
+function useTerminalSize() {
+  const [size, setSize] = useState(() => readTerminalSize());
+
+  useEffect(() => {
+    const stdout = process.stdout;
+    if (!stdout?.on) return undefined;
+
+    const onResize = () => setSize(readTerminalSize());
+    stdout.on('resize', onResize);
+
+    return () => {
+      if (typeof stdout.off === 'function') stdout.off('resize', onResize);
+      else if (typeof stdout.removeListener === 'function') stdout.removeListener('resize', onResize);
+    };
+  }, []);
+
+  return size;
+}
+
+function KeyHint({ keyLabel, text, color = 'yellow' }) {
   return (
-    <Text>
-      <Text color={color}>{'█'.repeat(filled)}</Text>
-      <Text color="gray">{'░'.repeat(width - filled)}</Text>
-      <Text color="white"> {cur}</Text>
+    <Box gap={1} flexWrap="nowrap">
+      <Text color={color} bold>[{keyLabel}]</Text>
+      <Text color="gray" dimColor>{text}</Text>
+    </Box>
+  );
+}
+
+function PanelShell({ borderColor = 'gray', minWidth, flexGrow = 0, children }) {
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={borderColor}
+      paddingX={1}
+      paddingY={0}
+      minWidth={minWidth}
+      flexGrow={flexGrow}
+    >
+      {children}
+    </Box>
+  );
+}
+
+function MutedFrame({ label, aside = null, borderColor = 'gray', flexGrow = 0, children }) {
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={borderColor}
+      paddingX={1}
+      paddingY={0}
+      flexGrow={flexGrow}
+    >
+      <Box flexDirection="row" justifyContent="space-between" gap={1} flexWrap="wrap">
+        <Text color="gray" dimColor>{label}</Text>
+        {aside ? <Text color="gray" dimColor>{aside}</Text> : null}
+      </Box>
+      {children}
+    </Box>
+  );
+}
+
+function ChromeBar({ shellTitle, compact }) {
+  return (
+    <Box
+      flexDirection={compact ? 'column' : 'row'}
+      justifyContent="space-between"
+      gap={1}
+      flexWrap="wrap"
+    >
+      <Box gap={1}>
+        <Text color="redBright">●</Text>
+        <Text color="yellowBright">●</Text>
+        <Text color="greenBright">●</Text>
+      </Box>
+
+      <Text color="gray" dimColor>{shellTitle}</Text>
+    </Box>
+  );
+}
+
+function WindowShell({ shellTitle, compact, children }) {
+  return (
+    <Box flexDirection="column" borderStyle="bold" borderColor="gray" paddingX={1} paddingY={0}>
+      <ChromeBar shellTitle={shellTitle} compact={compact} />
+      <Box flexDirection="column">
+        {children}
+      </Box>
+    </Box>
+  );
+}
+
+function MetricStrip({ vs, L, compact, focusLine, modeLabel, modeColor }) {
+  return (
+    <Box flexDirection="column" paddingX={0}>
+      <Box
+        flexDirection={compact ? 'column' : 'row'}
+        justifyContent="space-between"
+        gap={2}
+        flexWrap="wrap"
+      >
+        <Box gap={2} flexWrap="wrap">
+          <Text bold color="yellowBright">{L.title}</Text>
+          <Text color="white">{L.turn(vs.turn)}</Text>
+          <Box gap={0}>
+            <Text color="gray" dimColor>{L.pileLabels.draw}</Text>
+            <Text color="white">{vs.piles.draw}</Text>
+            <Text color="gray" dimColor>{'  '}{L.pileLabels.discard}</Text>
+            <Text color="white">{vs.piles.discard}</Text>
+            <Text color="gray" dimColor>{'  '}{L.pileLabels.exhaust}</Text>
+            <Text color="white">{vs.piles.exhaust}</Text>
+          </Box>
+        </Box>
+        <Text color={modeColor} dimColor={modeColor === 'gray'}>{modeLabel}</Text>
+      </Box>
+      {focusLine ? <Text color="yellowBright">{focusLine}</Text> : null}
+    </Box>
+  );
+}
+
+function HpBar({ cur, max, width = 12 }) {
+  const safeMax = Math.max(1, max ?? 0);
+  const safeCur = Math.max(0, Math.min(cur ?? 0, safeMax));
+  const ratio = safeCur / safeMax;
+  const filled = safeCur > 0
+    ? Math.max(1, Math.min(width, Math.round(ratio * width)))
+    : 0;
+  // HP 百分比决定颜色：> 50% 绿，> 25% 黄，≤ 25% 红
+  const fullColor = ratio > 0.50 ? 'green' : ratio > 0.25 ? 'yellow' : 'red';
+
+  return (
+    <Box gap={0} flexWrap="nowrap">
+      <Text color="gray" dimColor>{'['}</Text>
+      {Array.from({ length: width }, (_, slot) => {
+        const active = slot < filled;
+        return (
+          <Text key={slot} color={active ? fullColor : 'gray'} dimColor={!active}>{'■'}</Text>
+        );
+      })}
+      <Text color="gray" dimColor>{']'}</Text>
+    </Box>
+  );
+}
+
+function EnergyStat({ cur, max }) {
+  return (
+    <Box gap={0} flexWrap="nowrap">
+      <Text color={cur > 0 ? 'yellow' : 'gray'} bold={cur > 0}>{cur}</Text>
       <Text color="gray">/{max}</Text>
-    </Text>
+    </Box>
   );
 }
-
-// ── EnergyDots ────────────────────────────────────────────────────────────
-
-function EnergyDots({ cur, max }) {
-  return (
-    <Text>
-      <Text color="yellow">{'◆'.repeat(cur)}</Text>
-      <Text color="gray">{'◇'.repeat(Math.max(0, max - cur))}</Text>
-      <Text color="gray"> {cur}/{max}</Text>
-    </Text>
-  );
-}
-
 
 function StatusLine({ statuses, statusDisplayMap }) {
-  const items = Object.entries(statuses ?? {}).filter(([, v]) => v?.stacks > 0);
+  const items = Object.entries(statuses ?? {}).filter(
+    ([id, value]) => id !== 'block' && value?.stacks > 0,
+  );
+
   if (!items.length) return null;
+
   return (
-    <Box gap={1} flexWrap="wrap">
-      {items.map(([id, v]) => (
-        <Box key={id}>
+    <Box gap={1} flexWrap="wrap" marginTop={1}>
+      {items.map(([id, value]) => (
+        <Box key={id} gap={0}>
           <Text color="cyan">[</Text>
           <Text color="cyan">{statusDisplayMap[id]?.name ?? id}</Text>
-          <Text color="white" bold>×{v.stacks}</Text>
+          <Text color="white" bold>×{value.stacks}</Text>
           <Text color="cyan">]</Text>
         </Box>
       ))}
@@ -68,187 +208,271 @@ function StatusLine({ statuses, statusDisplayMap }) {
   );
 }
 
-// ── PlayerPanel ────────────────────────────────────────────────────────────
-
-function PlayerPanel({ player, sdm, L }) {
+function PlayerPanel({ player, statusDisplayMap, L, dense }) {
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1} minWidth={28}>
+    <PanelShell borderColor="green" minWidth={dense ? 29 : 32}>
       <Text bold color="greenBright">{L.player}</Text>
-      <Box gap={1}>
+
+      <Box gap={1} flexWrap="nowrap">
         <Text color="gray">{L.hp}</Text>
         <HpBar cur={player.hp} max={player.maxHp} width={12} />
+        <Text color="white" bold>{String(player.hp).padStart(3, ' ')}</Text>
+        <Text color="gray">/{player.maxHp}</Text>
       </Box>
-      <Box gap={1}>
+
+      <Box gap={1} flexWrap="wrap">
         <Text color="gray">{L.energy}</Text>
-        <EnergyDots cur={player.energy} max={player.maxEnergy} />
+        <EnergyStat cur={player.energy} max={player.maxEnergy} />
         {player.block > 0 && (
-          <Text color="blue">  {L.block}<Text bold color="blueBright">{player.block}</Text></Text>
+          <>
+            <Text color="gray"> </Text>
+            <Text color="blue">{L.block}</Text>
+            <Text color="blueBright" bold>{player.block}</Text>
+          </>
         )}
       </Box>
-      <StatusLine statuses={player.statuses} statusDisplayMap={sdm} />
-    </Box>
+
+      <StatusLine statuses={player.statuses} statusDisplayMap={statusDisplayMap} />
+    </PanelShell>
   );
 }
 
-// ── EnemyPanel ────────────────────────────────────────────────────────────
-
-function EnemyPanel({ enemy, sdm, highlight, L }) {
-  const ic = INTENT_COLOR[enemy.intentType] ?? 'white';
-  const ii = L.intentIcon[enemy.intentType] ?? '[?]';
+function EnemyPanel({ enemy, statusDisplayMap, highlight, L, dense }) {
+  const intentColor = INTENT_COLOR[enemy.intentType] ?? 'white';
+  const intentIcon = L.intentIcon[enemy.intentType] ?? '[?]';
   const borderColor = highlight ? 'yellowBright' : 'red';
+
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={borderColor} paddingX={1} minWidth={28}>
-      <Box gap={1}>
-        <Text bold color="redBright">{enemy.name}</Text>
-        <Text color="gray" dimColor>[slot {enemy.slot}]</Text>
+    <PanelShell borderColor={borderColor} minWidth={dense ? 29 : 30} flexGrow={1}>
+      <Box justifyContent="space-between" gap={1} flexWrap="wrap">
+        <Text bold color={highlight ? 'yellowBright' : 'redBright'}>{enemy.name}</Text>
+        <Text color={highlight ? 'yellowBright' : 'gray'}>[slot {enemy.slot}]</Text>
       </Box>
-      <Box gap={1}>
+
+      <Box gap={1} flexWrap="nowrap">
         <Text color="gray">{L.hp}</Text>
         <HpBar cur={enemy.hp} max={enemy.maxHp} width={12} />
-        {enemy.block > 0 && (
-          <Text color="blue">  {L.block}<Text bold color="blueBright">{enemy.block}</Text></Text>
-        )}
+        <Text color="white" bold>{String(enemy.hp).padStart(3, ' ')}</Text>
+        <Text color="gray">/{enemy.maxHp}</Text>
+        {enemy.block > 0 && <Text color="blueBright">{L.block} {enemy.block}</Text>}
       </Box>
-      <Box gap={1}>
-        <Text color={ic}>{ii}</Text>
-        <Text color={ic}>{enemy.intentDesc}</Text>
+
+      <Box gap={1} flexWrap="wrap">
+        <Text color={intentColor}>{intentIcon}</Text>
+        <Text color={intentColor}>{enemy.intentDesc}</Text>
       </Box>
-      <StatusLine statuses={enemy.statuses} statusDisplayMap={sdm} />
-    </Box>
+
+      <StatusLine statuses={enemy.statuses} statusDisplayMap={statusDisplayMap} />
+    </PanelShell>
   );
 }
 
-// ── CardRow ────────────────────────────────────────────────────────────────
-// 手牌纵向列表，每行一张，显示完整描述
-
 function CardRow({ card, index, selected, L }) {
-  const d = card.display ?? {};
-  const type = d.type ?? 'attack';
+  const display = card.display ?? {};
+  const type = display.type ?? 'attack';
   const color = CARD_TYPE_COLOR[type] ?? 'white';
   const label = L.cardType[type] ?? '?';
   const cost = (card.cost ?? 0) < 0 ? 'X' : String(card.cost ?? 0);
-  const exhaust = card.exhaust ?? false;
-
-  const fg = selected ? 'yellowBright' : color;
 
   return (
-    <Box gap={1}>
-      <Text bold color={fg}>[{index}]</Text>
+    <Box gap={1} flexWrap="wrap">
+      <Text color={selected ? 'yellowBright' : 'gray'}>{selected ? '>' : ' '}</Text>
+      <Text bold color={selected ? 'yellowBright' : color}>[{index}]</Text>
       <Text color="yellow">({cost})</Text>
       <Text color={color}>{label}</Text>
-      <Text bold color={selected ? 'yellowBright' : 'white'}>{d.name ?? card.cardId}</Text>
-      <Text color="gray">{d.desc ?? ''}</Text>
-      {exhaust && <Text color="magenta">{L.exhaust}</Text>}
+      <Text bold color={selected ? 'yellowBright' : 'white'}>{display.name ?? card.cardId}</Text>
+      {display.desc && (
+        <Text color="gray" dimColor>{display.desc}</Text>
+      )}
+      {card.exhaust && <Text color="magenta">{L.exhaust}</Text>}
     </Box>
   );
 }
 
-// ── StatusDict ────────────────────────────────────────────────────────────
-// i 键弹出的状态词典面板
+function HandPanel({ hand, selected, L }) {
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Text color="gray" dimColor>{L.handCount(hand.length)}</Text>
+      {hand.length === 0 && <Text color="gray">{L.empty.hand}</Text>}
+      {hand.map((card, index) => (
+        <CardRow
+          key={card.instanceId}
+          card={card}
+          index={index + 1}
+          selected={selected === index + 1}
+          L={L}
+        />
+      ))}
+    </Box>
+  );
+}
 
-function StatusDict({ statuses, sdmFull, L }) {
-  const groups = (statuses ?? []).map(group => ({
-    title: group.title,
-    items: Object.entries(group.values ?? {}).filter(([, v]) => v?.stacks > 0),
-  })).filter(group => group.items.length > 0);
+function StatusDict({ statuses, statusDisplayMap, L }) {
+  const groups = (statuses ?? [])
+    .map(group => ({
+      title: group.title,
+      items: Object.entries(group.values ?? {}).filter(([, value]) => value?.stacks > 0),
+    }))
+    .filter(group => group.items.length > 0);
 
   return (
-    <Box flexDirection="column" borderStyle="double" borderColor="cyan" paddingX={2} paddingY={0}>
-      <Text bold color="cyan"> {L.dictTitle}</Text>
-      {groups.length === 0 && <Text color="gray"> {L.dictEmpty}</Text>}
-      {groups.map(group => (
-        <Box key={group.title} flexDirection="column" marginTop={1}>
+    <MutedFrame label={L.dictTitle} borderColor="gray" aside={L.dictClose}>
+      {groups.length === 0 && <Text color="gray">{L.dictEmpty}</Text>}
+
+      {groups.map((group, groupIndex) => (
+        <Box key={group.title} flexDirection="column" marginTop={groupIndex === 0 ? 0 : 1}>
           <Text color="yellowBright" bold>{group.title}</Text>
-          {group.items.map(([id, v]) => {
-            const disp = sdmFull[id] ?? {};
+
+          {group.items.map(([id, value], itemIndex) => {
+            const display = statusDisplayMap[id] ?? {};
             return (
-              <Box key={`${group.title}:${id}`} gap={2} paddingLeft={1}>
-                <Text color="cyan" bold>{disp.name ?? id}×{v.stacks}</Text>
-                <Text color="gray">{v.desc ?? disp.desc ?? '—'}</Text>
+              <Box
+                key={`${group.title}:${id}`}
+                flexDirection="column"
+                marginTop={itemIndex === 0 ? 0 : 1}
+                paddingLeft={1}
+              >
+                <Box gap={1} flexWrap="wrap">
+                  <Text color="cyan">[{(display.name ?? id) + ` ×${value.stacks}`}]</Text>
+                </Box>
+                <Text color="gray">{value.desc ?? display.desc ?? '—'}</Text>
               </Box>
             );
           })}
         </Box>
       ))}
-      <Text color="gray" dimColor> {L.dictClose}</Text>
-    </Box>
+    </MutedFrame>
   );
 }
 
-// ── LogPanel ──────────────────────────────────────────────────────────────
+function LogPanel({ logs, L, limit = 20 }) {
+  const recent = logs.slice(-limit);
 
-function LogPanel({ logs, L }) {
-  const recent = logs.slice(-12);
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} flexGrow={1}>
       <Text color="gray" dimColor>{L.logTitle}</Text>
-      {recent.map((l, i) => {
-        const isSep = l.startsWith('─');
-        const isCard = l.startsWith('▷');
-        const isDeath = l.startsWith('☠');
+      {recent.length === 0 && <Text color="gray">{L.empty.log}</Text>}
+      {recent.map((line, index) => {
+        const isSeparator = line.startsWith('─');
+        const isCard = line.startsWith('▷');
+        const isDeath = line.startsWith('☠');
+        const isAction = line.startsWith('▶');
         return (
-          <React.Fragment key={i}>
-            <Text
-              color={isDeath ? 'redBright' : isSep ? 'yellow' : isCard ? 'white' : 'gray'}
-              bold={isCard || isDeath}
-              dimColor={!isSep && !isCard && !isDeath}
-            >{l}</Text>
-          </React.Fragment>
+          <Text
+            key={index}
+            color={isDeath ? 'redBright' : isSeparator ? 'yellow' : isCard ? 'white' : isAction ? 'cyan' : 'gray'}
+            bold={isCard || isDeath || isAction}
+            dimColor={!isSeparator && !isCard && !isDeath && !isAction}
+          >{line}</Text>
         );
       })}
     </Box>
   );
 }
 
-// ── HintBar ───────────────────────────────────────────────────────────────
+function NoticeLine({ notice }) {
+  if (!notice) return null;
 
-function HintBar({ handLen, awaitTarget, showDict, L }) {
-  if (showDict) return (
-    <Box paddingX={1}>
-      <Text color="cyan">[i]</Text>
-      <Text color="gray"> {L.hint.closeDict}</Text>
-    </Box>
-  );
-  if (awaitTarget) return (
-    <Box paddingX={1} gap={2}>
-      <Text color="yellowBright">{L.hint.selectTarget}</Text>
-      <Text color="gray"><Text color="yellow">[q]</Text> {L.hint.cancel}</Text>
-    </Box>
-  );
   return (
-    <Box paddingX={1} gap={3}>
-      <Text color="gray"><Text color="yellow">[1-{handLen}]</Text> {L.hint.play}</Text>
-      <Text color="gray"><Text color="yellow">[e]</Text> {L.hint.end}</Text>
-      <Text color="gray"><Text color="yellow">[u]</Text> {L.hint.undo}</Text>
-      <Text color="gray"><Text color="yellow">[s]</Text> {L.hint.save}</Text>
-      <Text color="gray"><Text color="yellow">[l]</Text> {L.hint.load}</Text>
-      <Text color="gray"><Text color="yellow">[i]</Text> {L.hint.dict}</Text>
-      <Text color="gray"><Text color="yellow">[q]</Text> {L.hint.quit}</Text>
+    <Box gap={1} flexWrap="wrap">
+      <Text color="greenBright" bold>{'>'}</Text>
+      <Text color="greenBright">{notice}</Text>
     </Box>
   );
 }
 
-// ── 主 App ────────────────────────────────────────────────────────────────
+function ControlsPanel({ handLen, enemyCount, awaitTarget, showDict, L }) {
+  if (showDict) {
+    return (
+      <Box gap={3} flexWrap="wrap">
+        <KeyHint keyLabel="i" text={L.hint.closeDict} color="cyan" />
+      </Box>
+    );
+  }
+
+  if (awaitTarget) {
+    return (
+      <Box gap={3} flexWrap="wrap">
+        {enemyCount > 0 ? (
+          <KeyHint keyLabel={`1-${enemyCount}`} text={L.hint.selectTarget} color="yellowBright" />
+        ) : null}
+        <Box>
+          <KeyHint keyLabel="q" text={L.hint.cancel} />
+        </Box>
+      </Box>
+    );
+  }
+
+  return (
+    <Box gap={3} flexWrap="wrap">
+      {handLen > 0 ? <KeyHint keyLabel={`1-${handLen}`} text={L.hint.play} /> : null}
+      <KeyHint keyLabel="e" text={L.hint.end} />
+      <KeyHint keyLabel="u" text={L.hint.undo} />
+      <KeyHint keyLabel="s" text={L.hint.save} />
+      <KeyHint keyLabel="l" text={L.hint.load} />
+      <KeyHint keyLabel="i" text={L.hint.dict} />
+      <KeyHint keyLabel="q" text={L.hint.quit} />
+    </Box>
+  );
+}
+
+function LoadingView({ L, shellTitle }) {
+  return (
+    <Box padding={1}>
+      <WindowShell
+        shellTitle={shellTitle}
+        compact={false}
+      >
+        <MutedFrame label={L.chromeTitle} borderColor="gray">
+          <Text bold color="yellowBright">{L.loading}</Text>
+        </MutedFrame>
+      </WindowShell>
+    </Box>
+  );
+}
+
+function EndView({ victory, L, shellTitle }) {
+  const accent = victory ? 'green' : 'red';
+  const messageColor = victory ? 'greenBright' : 'redBright';
+
+  return (
+    <Box padding={1}>
+      <WindowShell
+        shellTitle={shellTitle}
+        compact={false}
+      >
+        <MutedFrame label={L.chromeTitle} borderColor={accent}>
+          <Text bold color={messageColor}>{victory ? L.victory : L.defeat}</Text>
+          <Box marginTop={1}>
+            <KeyHint keyLabel="q" text={L.pressQuit} />
+          </Box>
+        </MutedFrame>
+      </WindowShell>
+    </Box>
+  );
+}
 
 export function App({ scenario }) {
   const { exit } = useApp();
+  const { columns, rows } = useTerminalSize();
   const L = getLocale(scenario?.lang ?? 'zh').ui;
+  const shellTitle = `openspire / ${scenario?.id ?? 'scenario'}`;
+
   const [session, setSession] = useState(null);
   const [vs, setVs] = useState(null);
   const [logs, setLogs] = useState([]);
-  const [selected, setSelected] = useState(null); // 1-based
+  const [selected, setSelected] = useState(null);
   const [awaitTarget, setAwaitTarget] = useState(false);
   const [showDict, setShowDict] = useState(false);
-  const [notice, setNotice] = useState(null);  // 一次性提示（存档等非日志操作）
+  const [notice, setNotice] = useState(null);
 
   useEffect(() => {
-    createSession(scenario).then((s) => {
-      setSession(s);
-      setVs(s.getViewState());
-      // 修复：消费 startBattle 产生的初始日志
-      if (s.initialLogs?.length) setLogs(s.initialLogs);
-    }).catch(e => {
-      process.stderr.write(getLocale(scenario?.lang ?? 'zh').cli.initFail(e.message) + '\n');
+    createSession(scenario).then((nextSession) => {
+      setSession(nextSession);
+      setVs(nextSession.getViewState());
+      if (nextSession.initialLogs?.length) setLogs(nextSession.initialLogs);
+    }).catch(error => {
+      process.stderr.write(getLocale(scenario?.lang ?? 'zh').cli.initFail(error.message) + '\n');
       process.exit(1);
     });
   }, []);
@@ -256,16 +480,26 @@ export function App({ scenario }) {
   useInput((input) => {
     if (!session || !vs) return;
 
-    // 战斗结束后只允许 q 退出
-    if (vs.over) { if (input === 'q') exit(); return; }
+    if (vs.over) {
+      if (input === 'q') exit();
+      return;
+    }
 
-    // 状态词典开关
-    if (input === 'i') { setShowDict(v => !v); return; }
+    if (input === 'i') {
+      setShowDict(value => !value);
+      return;
+    }
+
     if (showDict) return;
 
     if (input === 'q') {
-      if (awaitTarget) { setSelected(null); setAwaitTarget(false); return; }
-      exit(); return;
+      if (awaitTarget) {
+        setSelected(null);
+        setAwaitTarget(false);
+        return;
+      }
+      exit();
+      return;
     }
 
     if (input === 'u' && !awaitTarget) {
@@ -281,8 +515,8 @@ export function App({ scenario }) {
       try {
         writeFileSync(SAVE_FILE, JSON.stringify(session.getCheckpoint()));
         setNotice(L.notice.saved(vs.turn));
-      } catch (e) {
-        setNotice(L.notice.saveFail(e.message));
+      } catch (error) {
+        setNotice(L.notice.saveFail(error.message));
       }
       return;
     }
@@ -299,6 +533,7 @@ export function App({ scenario }) {
             typeof snapshot.entities.player === 'object' && snapshot.entities.player !== null
           )
         ) throw new Error('invalid save structure');
+
         const { logs: newLogs, state } = session.restoreTurn(snapshot);
         setLogs(prev => [...prev, ...newLogs, L.notice.loaded]);
         setVs(state);
@@ -319,130 +554,132 @@ export function App({ scenario }) {
       return;
     }
 
-    const n = parseInt(input);
-    if (isNaN(n) || n < 1) return;
+    const index = parseInt(input, 10);
+    if (Number.isNaN(index) || index < 1) return;
 
     if (awaitTarget) {
-      const enemy = vs.enemies.find(e => e.slot === n);
-      if (!enemy) return;  // 无效槽位，静默忽略
+      const enemy = vs.enemies.find(item => item.slot === index);
+      if (!enemy) return;
+
       const card = vs.hand[selected - 1];
-      const target = enemy.entityId;
-      const result = session.play(card.instanceId, target);
+      const result = session.play(card.instanceId, enemy.entityId);
       setLogs(prev => [...prev, ...result.logs]);
       setVs(result.state);
+
       if (result.success !== false) {
-        setSelected(null); setAwaitTarget(false); setNotice(null);
+        setSelected(null);
+        setAwaitTarget(false);
+        setNotice(null);
       } else {
         setNotice(L.notice.playFailed);
       }
       return;
     }
 
-    if (n > vs.hand.length) return;
-    const card = vs.hand[n - 1];
-    const tt = card.targetType;
+    if (index > vs.hand.length) return;
 
-    if (tt === 'enemy' && vs.enemies.length > 1) {
-      setSelected(n); setAwaitTarget(true);
+    const card = vs.hand[index - 1];
+    if (card.targetType === 'enemy' && vs.enemies.length > 1) {
+      setSelected(index);
+      setAwaitTarget(true);
+      return;
+    }
+
+    const target = card.targetType === 'enemy' ? vs.enemies[0]?.entityId : null;
+    const result = session.play(card.instanceId, target);
+    setLogs(prev => [...prev, ...result.logs]);
+    setVs(result.state);
+
+    if (result.success !== false) {
+      setSelected(null);
+      setNotice(null);
     } else {
-      const target = tt === 'enemy' ? vs.enemies[0]?.entityId : null;
-      const result = session.play(card.instanceId, target);
-      setLogs(prev => [...prev, ...result.logs]);
-      setVs(result.state);
-      if (result.success !== false) {
-        setSelected(null); setNotice(null);
-      } else {
-        setNotice(L.notice.playFailed);
-      }
+      setNotice(L.notice.playFailed);
     }
   });
 
-  // ── 加载中 ────────────────────────────────────────────────────────────
-  if (!vs) {
-    return (
-      <Box padding={2} flexDirection="column" gap={1}>
-        <Text color="yellowBright" bold>{L.title}</Text>
-        <Text color="gray">{L.loading}</Text>
-      </Box>
-    );
-  }
+  if (!vs) return <LoadingView L={L} shellTitle={shellTitle} />;
+  if (vs.over) return <EndView victory={vs.victory} L={L} shellTitle={shellTitle} />;
 
-  // ── 战斗结束 ──────────────────────────────────────────────────────────
-  if (vs.over) {
-    return (
-      <Box padding={2} flexDirection="column" gap={1}>
-        <Text bold color={vs.victory ? 'greenBright' : 'redBright'}>
-          {vs.victory ? L.victory : L.defeat}
-        </Text>
-        <Text color="gray">{L.pressQuit}</Text>
-      </Box>
-    );
-  }
-
-  const sdm = session?.displayMaps?.statusDisplayMap ?? {};
-
-  // 按源分组的状态列表（已由 presenter.buildViewState 构建，直接使用）
+  const statusDisplayMap = session?.displayMaps?.statusDisplayMap ?? {};
   const statusGroups = vs.statusGroups ?? [];
 
-  // ── 主界面 ────────────────────────────────────────────────────────────
+  const dense = columns < 110;
+  const battlefieldWide = columns >= 118;
+  // Chrome(1) + MetricStrip(2) + Battlefield(~6) + Hand(3+N) + Controls(1) ≈ 13+N
+  const logLimit = Math.max(5, rows - 13 - (vs.hand?.length ?? 3));
+  const modeLabel = showDict ? L.mode.dict : awaitTarget ? L.mode.target : L.mode.battle;
+  const modeColor = showDict ? 'cyan' : awaitTarget ? 'yellowBright' : 'gray';
+
+  const selectedCard = selected ? vs.hand[selected - 1] : null;
+  const selectedCardName = selectedCard?.display?.name ?? selectedCard?.cardId ?? null;
+  const focusLine = awaitTarget
+    ? (selectedCardName && typeof L.hint.selectTargetCard === 'function'
+      ? L.hint.selectTargetCard(selectedCardName)
+      : L.hint.selectTarget)
+    : null;
+
   return (
-    <Box flexDirection="column">
+    <Box padding={1}>
+      <WindowShell shellTitle={shellTitle} compact={!battlefieldWide}>
 
-      {/* ── 顶栏 */}
-      <Box gap={3} paddingX={1} borderStyle="single" borderColor="gray">
-        <Text bold color="yellowBright">{L.title}</Text>
-        <Text color="white">{L.turn(vs.turn)}</Text>
-        <Text color="gray">
-          {L.pileLabels.draw}<Text color="white">{vs.piles.draw}</Text>
-          {' '}{L.pileLabels.discard}<Text color="white">{vs.piles.discard}</Text>
-          {' '}{L.pileLabels.exhaust}<Text color="white">{vs.piles.exhaust}</Text>
-        </Text>
-      </Box>
+        {/* ── 顶部信息条（无边框）── */}
+        <MetricStrip
+          vs={vs}
+          L={L}
+          compact={!battlefieldWide}
+          focusLine={focusLine}
+          modeLabel={modeLabel}
+          modeColor={modeColor}
+        />
 
-      {/* ── 战场：玩家 | 敌人横排 */}
-      <Box flexDirection="row" gap={1} paddingX={1}>
-        <PlayerPanel player={vs.player} sdm={sdm} L={L} />
-        {vs.enemies.map((e) => (
-          <EnemyPanel key={e.slot} enemy={e} sdm={sdm} highlight={awaitTarget} L={L} />
-        ))}
-      </Box>
+        {/* ── 战场面板（横排）── */}
+        <Box flexDirection={battlefieldWide ? 'row' : 'column'} gap={0}>
+          <PlayerPanel
+            player={vs.player}
+            statusDisplayMap={statusDisplayMap}
+            L={L}
+            dense={dense}
+          />
+          <Box flexDirection="row" flexWrap="wrap" gap={0} flexGrow={1}>
+            {vs.enemies.map(enemy => (
+              <EnemyPanel
+                key={enemy.slot}
+                enemy={enemy}
+                statusDisplayMap={statusDisplayMap}
+                highlight={awaitTarget}
+                L={L}
+                dense={dense}
+              />
+            ))}
+          </Box>
+        </Box>
 
-      {/* ── 手牌纵向列表 */}
-      <Box flexDirection="column" paddingX={1} marginTop={1}
-        borderStyle="single" borderColor="gray">
-        <Text color="gray" dimColor>{L.handCount(vs.hand.length)}</Text>
-        {vs.hand.map((c, i) => (
-          <CardRow
-            key={c.instanceId}
-            card={c}
-            index={i + 1}
-            selected={selected === i + 1}
+        {/* ── 手牌（全宽）── */}
+        <HandPanel hand={vs.hand} selected={selected} L={L} />
+
+        {/* ── 日志 / 词典（全宽，撑满剩余行）── */}
+        {showDict ? (
+          <StatusDict
+            statuses={statusGroups}
+            statusDisplayMap={statusDisplayMap}
             L={L}
           />
-        ))}
-      </Box>
+        ) : (
+          <LogPanel logs={logs} L={L} limit={logLimit} />
+        )}
 
-      {/* ── 状态词典覆盖层 或 日志 */}
-      <Box paddingX={1} marginTop={1}>
-        {showDict
-          ? <StatusDict statuses={statusGroups} sdmFull={sdm} L={L} />
-          : <LogPanel logs={logs} L={L} />
-        }
-      </Box>
+        {/* ── 底部：通知 + 操控提示（无边框）── */}
+        {notice && <NoticeLine notice={notice} />}
+        <ControlsPanel
+          handLen={vs.hand.length}
+          enemyCount={vs.enemies.length}
+          awaitTarget={awaitTarget}
+          showDict={showDict}
+          L={L}
+        />
 
-      {/* ── notice 提示条（存档等非日志操作的一次性反馈） */}
-      {notice && (
-        <Box paddingX={1}>
-          <Text color="greenBright">{notice}</Text>
-        </Box>
-      )}
-
-      {/* ── 提示栏 */}
-      <Box marginTop={0}>
-        <HintBar handLen={vs.hand.length} awaitTarget={awaitTarget} showDict={showDict} L={L} />
-      </Box>
-
+      </WindowShell>
     </Box>
   );
 }
-

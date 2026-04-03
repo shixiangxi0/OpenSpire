@@ -41,35 +41,44 @@ function listScenarios() {
 function loadScenario(name) {
   const candidates = [name, resolve(SCENARIOS_DIR, `${name}.json`)];
   for (const p of candidates) {
-    try { return JSON.parse(readFileSync(p, 'utf-8')); } catch {}
+    try {
+      const scenario = JSON.parse(readFileSync(p, 'utf-8'));
+      if (scenario && typeof scenario === 'object' && name && !scenario.id) scenario.id = name;
+      return scenario;
+    } catch {}
   }
   return null;
 }
 
 // ── Main Entry ───────────────────────────────────────────────────────────────
 
+function normalizeLang(value) {
+  return value === 'zh' || value === 'en' ? value : null;
+}
+
 // Parse --lang argument (supports both --lang en and --lang=en formats)
 const rawArgs = process.argv.slice(2);
-let lang = 'en';
+let lang = null;
 const filteredArgs = [];
 for (let i = 0; i < rawArgs.length; i++) {
   const a = rawArgs[i];
-  if (a.startsWith('--lang='))        { lang = a.slice(7); }
-  else if (a === '--lang' && rawArgs[i + 1]) { lang = rawArgs[++i]; }
+  if (a.startsWith('--lang='))        { lang = normalizeLang(a.slice(7)); }
+  else if (a === '--lang' && rawArgs[i + 1]) { lang = normalizeLang(rawArgs[++i]); }
   else filteredArgs.push(a);
 }
 const [sub, scenarioArg] = filteredArgs;
 
 if (sub === 'json') {
-  await runJsonMode(scenarioArg);
+  await runJsonMode(scenarioArg, lang ?? 'en');
 } else {
-  await runInkMode(sub);  // sub 此时是场景名（或 undefined）
+  await runInkMode(sub, lang);  // sub 此时是场景名（或 undefined）
 }
 
 // ── ink 渲染模式 ──────────────────────────────────────────────────────────────
 
-async function runInkMode(scenarioArg) {
-  const CLI    = getLocale(lang).cli;
+async function runInkMode(scenarioArg, initialLang) {
+  const activeLang = initialLang ?? await pickLanguageInteractive();
+  const CLI    = getLocale(activeLang).cli;
   let scenario = loadScenario(scenarioArg);
 
   if (!scenario && scenarioArg) {
@@ -77,8 +86,8 @@ async function runInkMode(scenarioArg) {
     process.exit(1);
   }
 
-  if (!scenario) scenario = await pickScenarioInteractive();
-  scenario.lang = scenario.lang ?? lang;
+  if (!scenario) scenario = await pickScenarioInteractive(activeLang);
+  scenario.lang = scenario.lang ?? activeLang;
 
   const React      = (await import('react')).default;
   const { render } = await import('ink');
@@ -86,7 +95,23 @@ async function runInkMode(scenarioArg) {
   render(React.createElement(App, { scenario }));
 }
 
-async function pickScenarioInteractive() {
+async function pickLanguageInteractive() {
+  const Y = '\x1b[33m', B = '\x1b[1m', R = '\x1b[0m';
+  process.stdout.write(`\n${B}${Y}OpenSpire / STS${R}\n\n`);
+  process.stdout.write('Select language / 选择语言\n\n');
+  process.stdout.write(`  ${Y}[1]${R} 中文\n`);
+  process.stdout.write(`  ${Y}[2]${R} English\n\n`);
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise(res => {
+    rl.question('> ', answer => {
+      rl.close();
+      const normalized = answer.trim().toLowerCase();
+      res(normalized === '2' || normalized === 'e' || normalized === 'en' ? 'en' : 'zh');
+    });
+  });
+}
+
+async function pickScenarioInteractive(lang) {
   const CLI  = getLocale(lang).cli;
   const list = listScenarios();
   const Y = '\x1b[33m', B = '\x1b[1m', R = '\x1b[0m';
@@ -99,14 +124,16 @@ async function pickScenarioInteractive() {
       rl.close();
       const n    = parseInt(answer.trim(), 10);
       const name = (n >= 1 && n <= list.length) ? list[n - 1] : list[0];
-      res(JSON.parse(readFileSync(resolve(SCENARIOS_DIR, `${name}.json`), 'utf-8')));
+      const scenario = JSON.parse(readFileSync(resolve(SCENARIOS_DIR, `${name}.json`), 'utf-8'));
+      if (scenario && typeof scenario === 'object' && !scenario.id) scenario.id = name;
+      res(scenario);
     });
   });
 }
 
 // ── JSON 模式 ─────────────────────────────────────────────────────────────────
 
-async function runJsonMode(scenarioArg) {
+async function runJsonMode(scenarioArg, lang) {
   const CLI = getLocale(lang).cli;
   const out = (obj) => process.stdout.write(JSON.stringify(obj) + '\n');
 

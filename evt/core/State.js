@@ -1,7 +1,7 @@
 /**
  * State.js — the State API shared by JS game code and Lua handler scripts.
  *
- * createState() assembles five methods into a plain object.
+ * createState() assembles the runtime State primitives into a plain object.
  * Engine.js injects this object into the Lua VM as the global `State`, and also
  * returns it as `engine.state` for JS callers.
  *
@@ -12,7 +12,7 @@
  *   State.bind({ key: 'p1:shield', kind: 'effect', id: 'shield', ctx: { who: 'p1' } })
  * This:
  *   1. Looks up allDefs['effect']['shield'] (the module definition object)
- *   2. Registers its triggers into the relevant pipelines under key 'p1:shield'
+ *   2. Registers its event hooks into the relevant pipelines under key 'p1:shield'
  *   3. Writes the binding descriptor into _store._bindings['p1:shield']
  *      (via Registry.setBinding, which avoids dot-path parsing issues with
  *       keys that themselves contain dots)
@@ -21,6 +21,7 @@
  * iterates store._bindings and replays every bind call without any game-layer help.
  */
 import { luaSafe } from './util.js'
+import { getEventHooks } from './hooks.js'
 
 /**
  * @param {object} opts
@@ -62,7 +63,7 @@ export function createState({ registry, fireRef, allDefs }) {
       throw new Error('[State.bind] expected a binding spec object: { key, kind, id, ctx }')
     }
 
-    const { key, kind, id, ctx = {} } = spec
+    const { key, kind, id, ctx = {}, slot = null } = spec
     if (typeof key !== 'string' || key.length === 0) {
       throw new Error('[State.bind] key must be a non-empty string')
     }
@@ -75,22 +76,26 @@ export function createState({ registry, fireRef, allDefs }) {
     if (!ctx || typeof ctx !== 'object' || Array.isArray(ctx)) {
       throw new Error('[State.bind] ctx must be an object')
     }
+    if (slot != null && (!Number.isInteger(slot) || slot < 0)) {
+      throw new Error('[State.bind] slot must be a non-negative integer when provided')
+    }
     return {
       key,
       kind,
       id,
+      slot,
       moduleId: `${kind}/${id}`,
       ctx,
-      descriptor: { kind, id, ctx },
+      descriptor: { kind, id, ctx, slot },
     }
   }
 
-  function _validateBindingContext(kind, ctx) {
+  function _validateContext(kind, ctx, caller) {
     const requiredKeys = REQUIRED_CTX_BY_KIND[kind]
     if (!requiredKeys) return
     for (const ctxKey of requiredKeys) {
       if (typeof ctx?.[ctxKey] !== 'string' || ctx[ctxKey].length === 0) {
-        throw new Error(`[State.bind] "${kind}" bindings require ctx.${ctxKey} to be a non-empty string`)
+        throw new Error(`[State.${caller}] "${kind}" requires ctx.${ctxKey} to be a non-empty string`)
       }
     }
   }
@@ -161,27 +166,27 @@ export function createState({ registry, fireRef, allDefs }) {
      * Self-recording: writes the bind descriptor into _bindings so that
      * engine.load() can replay this exact call without any game-layer help.
      *
-     * @param {{ key: string, kind: string, id: string, ctx?: object }} spec
+     * @param {{ key: string, kind: string, id: string, ctx?: object, slot?: number | null }} spec
      */
     bind(spec) {
       const binding = _normalizeBinding(spec)
-      const { key, kind, id, moduleId: normalizedModuleId, ctx } = binding
+      const { key, kind, id, moduleId: normalizedModuleId, ctx, slot } = binding
       const def  = allDefs[kind]?.[id]
       if (!def) {
         throw new Error(`[State.bind] def not found: "${normalizedModuleId}" — did you call engine.use() before bind?`)
       }
-      if (ctx) _validateBindingContext(kind, ctx)
+      if (ctx) _validateContext(kind, ctx, 'bind')
 
-      // Validate all trigger events are declared before making any state changes.
+      // Validate all referenced hook events are declared before making any state changes.
       // This ensures bind() is atomic: either fully succeeds or leaves state untouched.
-      for (const t of def.triggers ?? []) {
-        if (!registry.getPipeline(t.event)) {
-          throw new Error(`[State.bind] "${normalizedModuleId}" references undeclared event "${t.event}" — declare it in module.events before calling bind()`)
+      for (const t of getEventHooks(def)) {
+        if (!registry.getPipeline(t.name)) {
+          throw new Error(`[State.bind] "${normalizedModuleId}" references undeclared event "${t.name}" — declare it in module.events before calling bind()`)
         }
       }
 
       registry.unregister(key)                                       // idempotent clear
-      registry.register(def, { registeredBy: key, ctx })             // install handlers
+      registry.register(def, { registeredBy: key, ctx, slot })       // install handlers
       registry.setBinding(key, binding.descriptor)                   // self-record
     },
 

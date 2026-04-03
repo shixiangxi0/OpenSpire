@@ -48,8 +48,11 @@ For data-driven games, **AI can dramatically shorten the game design and logic d
 
 ```sh
 pnpm install
-pnpm start              # Interactive scenario picker
-pnpm start iron_plague  # Launch specific scenario directly
+pnpm sts                         # STS: pick language first, then pick scenario
+pnpm sts -- iron_plague          # STS: launch a specific scenario directly
+pnpm sts -- --lang en            # STS: skip language picker and start in English
+pnpm balatro                     # Balatro: pick language first, then start
+pnpm balatro -- --lang zh        # Balatro: skip language picker and start in Chinese
 ```
 
 ### Terminal Display
@@ -80,10 +83,9 @@ Example: Adding a new card only requires defining a Lua script
 export const myCard = {
   id: 'my_card',
   cost: 1,
-  triggers: [{
-    event: 'card:effect',
-    script: `State.emit('entity:attack', { target = Event.target, amount = 10 })`
-  }]
+  hooks: {
+    'event:card:effect': `State.emit('entity:attack', { target = Event.target, amount = 10 })`
+  }
 };
 ```
 

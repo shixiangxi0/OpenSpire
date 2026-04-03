@@ -52,6 +52,8 @@ export const LOCALES = {
     // UI 界面文字
     ui: {
       title:      '== 杀戮尖塔 ==',
+      chromeTitle:'OpenSpire CLI',
+      shellTitle: 'STS 参考战斗',
       player:     '玩家',
       hp:         'HP',
       energy:     '能量',
@@ -69,6 +71,21 @@ export const LOCALES = {
       victory:    '== 战斗胜利！==',
       defeat:     '== 你被击败了。==',
       pressQuit:  '按 q 退出',
+      mode: {
+        battle: '战斗中',
+        target: '目标选择',
+        dict:   '词典展开',
+      },
+      section: {
+        battlefield: '战场',
+        hand:        '出牌区',
+        controls:    '操作',
+        notice:      '提示',
+      },
+      empty: {
+        log:  '等待新的事件...',
+        hand: '当前没有手牌',
+      },
       dictTitle:  '状态词典（当前生效）',
       dictEmpty:  '无生效状态',
       dictClose:  '按 [i] 关闭',
@@ -83,6 +100,7 @@ export const LOCALES = {
         quit:         '退出',
         closeDict:    '关闭状态词典',
         selectTarget: '选目标敌人编号',
+        selectTargetCard: (name) => `为 ${name} 选择目标敌人编号`,
         cancel:       '取消',
       },
       notice: {
@@ -145,6 +163,8 @@ export const LOCALES = {
 
     ui: {
       title:      '== Slay the Spire ==',
+      chromeTitle:'OpenSpire CLI',
+      shellTitle: 'STS Reference Battle',
       player:     'Player',
       hp:         'HP',
       energy:     'Energy',
@@ -159,6 +179,21 @@ export const LOCALES = {
       victory:    '== Victory! ==',
       defeat:     '== Defeated. ==',
       pressQuit:  'Press q to quit',
+      mode: {
+        battle: 'Battle',
+        target: 'Targeting',
+        dict:   'Dictionary',
+      },
+      section: {
+        battlefield: 'Battlefield',
+        hand:        'Action Panel',
+        controls:    'Controls',
+        notice:      'Notice',
+      },
+      empty: {
+        log:  'Awaiting new events...',
+        hand: 'No cards in hand',
+      },
       dictTitle:  'Status Dictionary (Active)',
       dictEmpty:  'No active statuses',
       dictClose:  'Press [i] to close',
@@ -173,6 +208,7 @@ export const LOCALES = {
         quit:         'Quit',
         closeDict:    'Close Status Dict',
         selectTarget: 'Select enemy slot #',
+        selectTargetCard: (name) => `Select enemy slot for ${name}`,
         cancel:       'Cancel',
       },
       notice: {

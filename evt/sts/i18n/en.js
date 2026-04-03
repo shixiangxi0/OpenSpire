@@ -36,19 +36,19 @@ export default {
   // ── Statuses ─────────────────────────────────────────────────────────────
   statuses: {
     block:       { name: 'Block',         desc: 'Absorbs incoming damage. Cleared at start of turn.' },
-    strength:    { name: 'Strength',      desc: 'Attacks deal {stacks} additional damage.' },
+    strength:    { name: 'Strength',      desc: 'Attacks deal additional damage equal to stacks.' },
     weak:        { name: 'Weak',          desc: 'Attacks deal 25% less damage.' },
     vulnerable:  { name: 'Vulnerable',    desc: 'Takes 50% more damage from attacks.' },
-    ritual:      { name: 'Ritual',        desc: 'Gain {stacks} Strength at the end of each turn.' },
-    extra_draw:  { name: 'Extra Draw',    desc: 'Draw {stacks} additional card(s) at start of turn.' },
-    card_tax:    { name: 'Curse Tax',     desc: 'Whenever you play a card, take {stacks} damage.' },
-    rupture:     { name: 'Rupture',       desc: 'Whenever you lose HP directly, gain {stacks} Strength.' },
+    ritual:      { name: 'Ritual',        desc: 'Gain Strength at the end of each turn equal to stacks.' },
+    extra_draw:  { name: 'Extra Draw',    desc: 'Draw additional cards at start of turn equal to stacks.' },
+    card_tax:    { name: 'Curse Tax',     desc: 'Whenever you play a card, take damage equal to stacks.' },
+    rupture:     { name: 'Rupture',       desc: 'Whenever you lose HP directly, gain Strength equal to stacks.' },
     demon_form:  { name: 'Demon Form',    desc: 'Gain 3 Strength at the start of each turn.' },
     poison:      { name: 'Poison',        desc: 'At end of turn, take damage equal to stacks, then reduce by 1.' },
-    thorns:      { name: 'Thorns',        desc: 'When attacked, deal {stacks} damage back to the attacker.' },
+    thorns:      { name: 'Thorns',        desc: 'When attacked, deal damage equal to stacks back to the attacker.' },
     frail:       { name: 'Frail',         desc: 'Block gained is reduced by 25%.' },
-    metallicize: { name: 'Metallicize',   desc: 'Gain {stacks} Block at the end of each turn.' },
-    frenzy:      { name: 'Frenzy',        desc: 'On kill: draw {stacks} card(s) and gain 1 Energy.' },
+    metallicize: { name: 'Metallicize',   desc: 'Gain Block at the end of each turn equal to stacks.' },
+    frenzy:      { name: 'Frenzy',        desc: 'On kill: draw cards equal to stacks and gain 1 Energy.' },
   },
 
   // ── Enemies ──────────────────────────────────────────────────────────────

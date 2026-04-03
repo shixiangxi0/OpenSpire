@@ -160,19 +160,28 @@ describe('addHandler', () => {
     const scripts = reg.getPipeline('test:evt').handlers.map(h => h.script)
     expect(scripts).toEqual(['first', 'second'])
   })
+
+  it('rejects match filters that reference missing ctx keys', () => {
+    expect(() => reg.addHandler('test:evt', {
+      script: 'body',
+      registeredBy: 'x',
+      ctx: {},
+      match: { target: 'self' },
+    })).toThrow(/missing ctx\.self/)
+  })
 })
 
 describe('register', () => {
   beforeEach(() => reg.definePipeline('test:evt'))
 
   it('throws when id is missing', () => {
-    expect(() => reg.register({ triggers: [] })).toThrow(/id is required/)
+    expect(() => reg.register({ hooks: {} })).toThrow(/id is required/)
   })
 
-  it('registers all triggers with registeredBy default = module id', () => {
+  it('registers all event hooks with registeredBy default = module id', () => {
     reg.register({
       id: 'mod:a',
-      triggers: [{ event: 'test:evt', order: 0, script: 'a' }],
+      hooks: { 'event:test:evt': { order: 0, script: 'a' } },
     })
     const h = reg.getPipeline('test:evt').handlers[0]
     expect(h.registeredBy).toBe('mod:a')
@@ -180,7 +189,7 @@ describe('register', () => {
 
   it('provided registeredBy overrides module id', () => {
     reg.register(
-      { id: 'mod:a', triggers: [{ event: 'test:evt', order: 0, script: 'x' }] },
+      { id: 'mod:a', hooks: { 'event:test:evt': { order: 0, script: 'x' } } },
       { registeredBy: 'custom-key' },
     )
     expect(reg.getPipeline('test:evt').handlers[0].registeredBy).toBe('custom-key')
@@ -188,11 +197,26 @@ describe('register', () => {
 
   it('ctx is stored on each registered handler', () => {
     reg.register(
-      { id: 'mod:a', triggers: [{ event: 'test:evt', order: 0, script: 'body' }] },
+      { id: 'mod:a', hooks: { 'event:test:evt': { order: 0, script: 'body' } } },
       { ctx: { self: 'player' } },
     )
     expect(reg.getPipeline('test:evt').handlers[0].ctx).toEqual({ self: 'player' })
     expect(reg.getPipeline('test:evt').handlers[0].script).toBe('body')
+  })
+
+  it('stores match on registered event hooks', () => {
+    reg.register(
+      { id: 'mod:a', hooks: { 'event:test:evt': { order: 0, script: 'body', match: { target: 'self' } } } },
+      { ctx: { self: 'player' } },
+    )
+    expect(reg.getPipeline('test:evt').handlers[0].match).toEqual({ target: 'self' })
+  })
+
+  it('rejects unsupported hook keys', () => {
+    expect(() => reg.register({
+      id: 'mod:a',
+      hooks: { 'hook:poke': { script: 'return', match: { target: 'self' } } },
+    })).toThrow(/expected "event:<name>"/)
   })
 })
 
